@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "mybatis-3-mapper.dtd">
+<mapper namespace="com.xiaohua.dao.VisualDataMapper">
+
+    <resultMap id="ImageTypeMap" type="com.xiaohua.domain.VisualDataType">
+        <result column="count(imageType)" property="value"></result>
+        <result column="imageType" property="name"></result>
+    </resultMap>
+
+    <!--   不需要resultMap,直接使用as number将计数映射至实体类名称-->
+<!--    <resultMap id="ImageSpotMap" type="VisualDataSite">-->
+<!--       -->
+<!--    </resultMap>-->
+
+    <select id="selectVisualDataType" resultType="com.xiaohua.domain.VisualDataType" resultMap="ImageTypeMap">
+        select imageType,count(imageType)
+        from image_type
+        where imageId in
+        ( select imageId
+        from user_image
+        where userId = #{userId}
+        )
+        group by imageType
+    </select>
+
+    <select id="selectVisualDataSite" resultType="com.xiaohua.domain.VisualDataSite" >
+        select imageSite ,count(imageSite) as number
+        from image
+        where id in
+        ( select imageId
+        from user_image
+        where userId = #{userId}
+        )
+        group by imageSite
+    </select>
+
+
+</mapper>

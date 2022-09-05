@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "mybatis-3-mapper.dtd">
+<mapper namespace="com.xiaohua.dao.RecycleMapper">
+
+
+<!--正-->
+    <insert id="addImageToRecycle" parameterType="list" useGeneratedKeys="true">
+        insert into recycle  values
+        <foreach collection="list" item="item" index="index" separator=",">
+            (
+            null,
+            #{userId},
+            #{item},
+            now()
+            )
+        </foreach>
+    </insert>
+
+<!--    &lt;!&ndash;逆&ndash;&gt;-->
+<!--    <insert id="recoverImageToAlbum" parameterType="list">-->
+<!--        insert into album_image values-->
+<!--        <foreach collection="list" item="item" index="index" separator=",">-->
+<!--            (-->
+<!--            null,-->
+<!--            (select albumId from album_image where imageId = #{item}),-->
+<!--            #{item}-->
+<!--            )-->
+<!--        </foreach>-->
+<!--    </insert>-->
+
+    <delete id="deleteRecycle" parameterType="list">
+        delete from recycle where userId=#{userId} and imageId in
+        (
+        <foreach collection="list" item="item" index="index" separator=",">
+        #{item}
+        </foreach>
+        )
+    </delete>
+
+
+
+
+</mapper>

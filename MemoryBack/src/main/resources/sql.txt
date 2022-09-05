@@ -1,0 +1,98 @@
+create table album
+(
+    id              int auto_increment
+        primary key,
+    albumName       varchar(30)  null,
+    albumTheme      varchar(50)  null,
+    albumContext    text         null,
+    albumImg        varchar(100) null,
+    backgroundImage varchar(100) null,
+    albumMusic      varchar(100) null,
+    userId          int          null,
+    constraint album_id_uindex
+        unique (id)
+);
+
+create table album_image
+(
+    id      int auto_increment
+        primary key,
+    albumId int null,
+    imageId int null,
+    constraint album_image_id_uindex
+        unique (id)
+);
+
+create table image
+(
+    id        int auto_increment
+        primary key,
+    imageName varchar(100) null,
+    imageSize mediumtext   null,
+    imageSite varchar(30)  null,
+    imageUrL  varchar(100) null,
+    imageDate date         null,
+    constraint image_id_uindex
+        unique (id)
+);
+
+create table image_type
+(
+    id        int auto_increment
+        primary key,
+    imageId   int         null,
+    imageType varchar(30) null,
+    constraint imageType_id_uindex
+        unique (id)
+);
+
+create table record
+(
+    id       int auto_increment
+        primary key,
+    behavior varchar(30)  null,
+    ipv4     varchar(100) null,
+    date     date         null,
+    count    int          null,
+    userId   int          null,
+    constraint record_id_uindex
+        unique (id)
+);
+
+create table recycle
+(
+    id      int auto_increment
+        primary key,
+    userId  int null,
+    imageId int null,
+    constraint recycle_id_uindex
+        unique (id)
+);
+
+create table user
+(
+    id       int auto_increment,
+    userName varchar(25)                                       not null,
+    passWord varchar(25)                                       not null,
+    sex      varchar(10)                                       null,
+    email    varchar(30)                                       null,
+    phone    varchar(15)                                       null,
+    city     varchar(25)                                       null,
+    birthday date                                              null,
+    capacity int          default 1000                         null,
+    avatar   varchar(100) default '/static/avatar/default.jpg' null,
+    constraint user_id_uindex
+        unique (id),
+    constraint user_userName_uindex
+        unique (userName)
+);
+
+create table user_image
+(
+    id      int auto_increment
+        primary key,
+    userId  int null,
+    imageId int null,
+    constraint user_image_id_uindex
+        unique (id)
+);
