@@ -96,7 +96,7 @@ export default {
             if (data.status == "success") {
               // 将登陆成功的凭证存入cooike，时间为1天
               _this.$cookie.setCookie('token', data.token, 0.5);
-              this.$message({
+              _this.$message({
                 message: '恭喜你，登陆成功!',
                 type: 'success'
               });
