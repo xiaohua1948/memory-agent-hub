@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.memory.xiaohua.mapper.VideoMetaDataMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.memory.xiaohua.model.entity.VideoMetaData">
+        <id column="file_id" property="fileId" />
+
+        <result column="color_space" property="colorSpace" />
+
+        <!-- 视频属性 -->
+        <result column="duration" property="duration" />
+        <result column="fps" property="fps" />
+        <result column="rotation" property="rotation" />
+
+        <!-- 视频编码 -->
+        <result column="video_codec_name" property="videoCodecName" />
+        <result column="video_codec" property="videoCodec" />
+        <result column="video_bitrate" property="videoBitrate" />
+
+        <!-- 音频编码 -->
+        <result column="audio_codec_name" property="audioCodecName" />
+        <result column="audio_codec" property="audioCodec" />
+        <result column="audio_sample_rate" property="audioSampleRate" />
+        <result column="audio_channels" property="audioChannels" />
+
+        <!-- 高级属性 -->
+        <result column="copyright" property="copyright" />
+        <result column="language" property="language" />
+
+        <!-- 编码参数 -->
+        <result column="profile" property="profile" />
+        <result column="level" property="level" />
+        <result column="pixel_format" property="pixelFormat" />
+    </resultMap>
+
+</mapper>
