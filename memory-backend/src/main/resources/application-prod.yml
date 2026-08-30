@@ -1,0 +1,84 @@
+# ==================== 生产环境配置 ====================
+# 启动方式：java -jar memory-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+#
+# 安全提示：所有敏感信息均通过环境变量注入，禁止将真实密钥写入本文件。
+# 部署前请设置下列环境变量（默认值仅用于占位，实际运行时会被覆盖）：
+#   MYSQL_HOST / MYSQL_PORT / MYSQL_DB / MYSQL_USERNAME / MYSQL_PASSWORD
+#   REDIS_HOST / REDIS_PORT / REDIS_PASSWORD / REDIS_DB
+#   MAIL_HOST / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD / MAIL_CODE_TIME
+#   SA_TOKEN_JWT_SECRET
+#   MINIO_ACCESS_KEY / MINIO_SECRET_KEY / MINIO_URL / MINIO_BUCKET
+#   ALIYUN_OSS_ENDPOINT / ALIYUN_OSS_ACCESS_KEY / ALIYUN_OSS_SECRET_KEY / ALIYUN_OSS_BUCKET
+#   AMAP_API_KEY
+#   HUAWEI_CLOUD_AK / HUAWEI_CLOUD_SK / HUAWEI_CLOUD_REGION / HUAWEI_CLOUD_IMAGE_ENDPOINT
+
+spring:
+  # mysql配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DB:memory_space}?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
+  # redis配置
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DB:0}
+  # 邮箱配置
+  mail:
+    host: ${MAIL_HOST:smtp.qq.com}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    default-encoding: utf-8
+    protocol: smtps
+    code:
+      time: ${MAIL_CODE_TIME:300}
+
+# 生产环境不打印 SQL，避免性能损耗与信息泄露
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+sa-token:
+  jwt-secret-key: ${SA_TOKEN_JWT_SECRET:}
+
+# minio oss配置
+minio:
+  access-key: ${MINIO_ACCESS_KEY:}
+  secret-key: ${MINIO_SECRET_KEY:}
+  url: ${MINIO_URL:http://127.0.0.1:9000}
+  bucket-name: ${MINIO_BUCKET:pictures}
+
+# 阿里OSS配置
+aliyun:
+  oss:
+    endpoint: ${ALIYUN_OSS_ENDPOINT:}
+    accessKeyId: ${ALIYUN_OSS_ACCESS_KEY:}
+    accessKeySecret: ${ALIYUN_OSS_SECRET_KEY:}
+    bucketName: ${ALIYUN_OSS_BUCKET:}
+
+# 高德API_KEY
+amp:
+  api:
+    key: ${AMAP_API_KEY:}
+
+# 华为云图像识别配置
+huawei:
+  cloud:
+    image:
+      ak: ${HUAWEI_CLOUD_AK:}
+      sk: ${HUAWEI_CLOUD_SK:}
+      region: ${HUAWEI_CLOUD_REGION:cn-north-4}
+      endpoint: ${HUAWEI_CLOUD_IMAGE_ENDPOINT:image.cn-north-4.myhuaweicloud.com}
+      threshold: 10 # 置信度阈值
+      language: zh # 返回语言
+
+# 生产环境关闭 Swagger，如需线上调试可临时改为 true
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

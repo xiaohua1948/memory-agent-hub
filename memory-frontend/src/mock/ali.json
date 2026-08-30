@@ -1,0 +1,369 @@
+{
+    "items": [
+        {
+            "drive_id": "110259420",
+            "file_id": "635732b80fa63070dcaf46b3b38e02bcce5f52db",
+            "category": "video",
+            "content_hash": "FD53BF1C8F4DF31AFD358C226B55275C5DA40836",
+            "content_hash_name": "sha1",
+            "content_type": "video/mp4",
+            "crc64_hash": "174783662017575039",
+            "created_at": "2022-10-25T00:50:00.972Z",
+            "domain_id": "bj29",
+            "download_url": "https://cn-beijing-data.aliyundrive.net/HkEnWYHO%2F110259420%2F635732b80fa63070dcaf46b3b38e02bcce5f52db%2F635732b80f4fc5115a16454b932f236e1900ba98?di=bj29&dr=110259420&f=635732b80fa63070dcaf46b3b38e02bcce5f52db&response-content-disposition=attachment%3B%20filename%2A%3DUTF-8%27%27TG-2022-09-03-232432689.mp4&security-token=CAISvgJ1q6Ft5B2yfSjIr5bCOOrunLtIwKyhexX0okQ4asxPjJTThjz2IHhMf3NpBOkZvvQ1lGlU6%2Fcalq5rR4QAXlDfNWPSBQL4q1HPWZHInuDox55m4cTXNAr%2BIhr%2F29CoEIedZdjBe%2FCrRknZnytou9XTfimjWFrXWv%2Fgy%2BQQDLItUxK%2FcCBNCfpPOwJms7V6D3bKMuu3OROY6Qi5TmgQ41Uh1jgjtPzkkpfFtkGF1GeXkLFF%2B97DRbG%2FdNRpMZtFVNO44fd7bKKp0lQLs0ARrv4r1fMUqW2X543AUgFLhy2KKMPY99xpFgh9a7j0iCbSGyUu%2FhcRm5sw9%2Byfo34lVYneA%2Fzawmkr7uHwufJ7FxfIREfquk63pvSlHLcLPe0Kjzzleo2k1XRPVFF%2B535IaHXuToXDnvSiLGy5vvXtuMkagAFrxS%2Fyv66OwS0VdRVDKn9sKXtfgXiTyDqO9SQc%2F5gT%2BASJEN7fgDRDe4hXzoQIIKuU%2BCZf%2FkOqdXELO1w3zo4kIKKwr8Jr%2FqFqVHlJ%2BcXCvGuo4j31MNYDGKE0%2F8UaeRxzOpXFtK4TetJWsr065Sp0giH2UGUs3mhJoHp8MKiUmCAA&u=AK&x-oss-access-key-id=STS.NUwsPZqdiwnJy3EFDmfCccQxd&x-oss-expires=1737189687&x-oss-signature=pAKt71Qew21HDhpL64O6TBFf5%2BefNRzbxegu9Zc6LO8%3D&x-oss-signature-version=OSS2",
+            "encrypt_mode": "none",
+            "file_extension": "mp4",
+            "hidden": false,
+            "labels": [
+                "日常用品",
+                "其他场景",
+                "其他事物",
+                "虚拟场景",
+                "信",
+                "文本",
+                "网页",
+                "网站",
+                "手写",
+                "颜色",
+                "手机截图",
+                "黑色",
+                "白色",
+                "蓝色",
+                "灰色"
+            ],
+            "name": "TG-2022-09-03-232432689.mp4",
+            "parent_file_id": "root",
+            "size": 5006090,
+            "starred": false,
+            "status": "available",
+            "thumbnail": "https://cn-beijing-data.aliyundrive.net/HkEnWYHO%2F110259420%2F635732b80fa63070dcaf46b3b38e02bcce5f52db%2F635732b80f4fc5115a16454b932f236e1900ba98?di=bj29&dr=110259420&f=635732b80fa63070dcaf46b3b38e02bcce5f52db&security-token=CAISvgJ1q6Ft5B2yfSjIr5bCOOrunLtIwKyhexX0okQ4asxPjJTThjz2IHhMf3NpBOkZvvQ1lGlU6%2Fcalq5rR4QAXlDfNWPSBQL4q1HPWZHInuDox55m4cTXNAr%2BIhr%2F29CoEIedZdjBe%2FCrRknZnytou9XTfimjWFrXWv%2Fgy%2BQQDLItUxK%2FcCBNCfpPOwJms7V6D3bKMuu3OROY6Qi5TmgQ41Uh1jgjtPzkkpfFtkGF1GeXkLFF%2B97DRbG%2FdNRpMZtFVNO44fd7bKKp0lQLs0ARrv4r1fMUqW2X543AUgFLhy2KKMPY99xpFgh9a7j0iCbSGyUu%2FhcRm5sw9%2Byfo34lVYneA%2Fzawmkr7uHwufJ7FxfIREfquk63pvSlHLcLPe0Kjzzleo2k1XRPVFF%2B535IaHXuToXDnvSiLGy5vvXtuMkagAFrxS%2Fyv66OwS0VdRVDKn9sKXtfgXiTyDqO9SQc%2F5gT%2BASJEN7fgDRDe4hXzoQIIKuU%2BCZf%2FkOqdXELO1w3zo4kIKKwr8Jr%2FqFqVHlJ%2BcXCvGuo4j31MNYDGKE0%2F8UaeRxzOpXFtK4TetJWsr065Sp0giH2UGUs3mhJoHp8MKiUmCAA&u=AK&x-oss-access-key-id=STS.NUwsPZqdiwnJy3EFDmfCccQxd&x-oss-expires=1737189687&x-oss-process=video%2Fsnapshot%2Ct_0%2Cf_jpg%2Cm_lfit%2Cw_480%2Car_auto%2Cm_fast&x-oss-signature=duzaUhViqQ6yvYmcw%2Bj1Duu5d4VhvW4di1zIhu5VNsw%3D&x-oss-signature-version=OSS2",
+            "type": "file",
+            "updated_at": "2022-10-25T00:50:26.031Z",
+            "upload_id": "B56D4658CD454D60863DCE7F32BEDA3E",
+            "url": "https://cn-beijing-data.aliyundrive.net/HkEnWYHO%2F110259420%2F635732b80fa63070dcaf46b3b38e02bcce5f52db%2F635732b80f4fc5115a16454b932f236e1900ba98?di=bj29&dr=110259420&f=635732b80fa63070dcaf46b3b38e02bcce5f52db&security-token=CAISvgJ1q6Ft5B2yfSjIr5bCOOrunLtIwKyhexX0okQ4asxPjJTThjz2IHhMf3NpBOkZvvQ1lGlU6%2Fcalq5rR4QAXlDfNWPSBQL4q1HPWZHInuDox55m4cTXNAr%2BIhr%2F29CoEIedZdjBe%2FCrRknZnytou9XTfimjWFrXWv%2Fgy%2BQQDLItUxK%2FcCBNCfpPOwJms7V6D3bKMuu3OROY6Qi5TmgQ41Uh1jgjtPzkkpfFtkGF1GeXkLFF%2B97DRbG%2FdNRpMZtFVNO44fd7bKKp0lQLs0ARrv4r1fMUqW2X543AUgFLhy2KKMPY99xpFgh9a7j0iCbSGyUu%2FhcRm5sw9%2Byfo34lVYneA%2Fzawmkr7uHwufJ7FxfIREfquk63pvSlHLcLPe0Kjzzleo2k1XRPVFF%2B535IaHXuToXDnvSiLGy5vvXtuMkagAFrxS%2Fyv66OwS0VdRVDKn9sKXtfgXiTyDqO9SQc%2F5gT%2BASJEN7fgDRDe4hXzoQIIKuU%2BCZf%2FkOqdXELO1w3zo4kIKKwr8Jr%2FqFqVHlJ%2BcXCvGuo4j31MNYDGKE0%2F8UaeRxzOpXFtK4TetJWsr065Sp0giH2UGUs3mhJoHp8MKiUmCAA&u=AK&x-oss-access-key-id=STS.NUwsPZqdiwnJy3EFDmfCccQxd&x-oss-expires=1737189687&x-oss-signature=01jve5Q7u0lY4VwmczFXkyMDPds7siD68t2eYrid99w%3D&x-oss-signature-version=OSS2",
+            "user_meta": "{\"size\":5006090,\"android_local_file_path\":\"/storage/emulated/0/DCIM/Camera/TG-2022-09-03-232432689.mp4\",\"device_meta\":[{\"identifier\":\"1065868_/storage/emulated/0/DCIM/Camera/TG-2022-09-03-232432689.mp4\",\"utd_id\":\"XVKxNFxybMEDAM4aiRz9ki3h\",\"platform\":\"android\"}],\"android_identify_id\":\"1065868\",\"hash\":\"B2019D9C5BE91671BF89F9F601CA89FB8C35C1B5\"}",
+            "video_media_metadata": {
+                "duration": "10.542",
+                "height": 1920,
+                "image_tags": [
+                    {
+                        "confidence": 1.0,
+                        "name": "日常用品",
+                        "tag_level": 1
+                    },
+                    {
+                        "confidence": 0.7039999961853027,
+                        "name": "旅游&地理",
+                        "tag_level": 1
+                    },
+                    {
+                        "confidence": 0.8460000157356262,
+                        "name": "其他场景",
+                        "tag_level": 1
+                    },
+                    {
+                        "confidence": 0.9620000123977661,
+                        "name": "其他事物",
+                        "tag_level": 1
+                    },
+                    {
+                        "confidence": 0.6690000295639038,
+                        "name": "植物",
+                        "tag_level": 1
+                    },
+                    {
+                        "confidence": 0.9070000052452087,
+                        "name": "虚拟场景",
+                        "tag_level": 1
+                    },
+                    {
+                        "confidence": 0.7680000066757202,
+                        "name": "艺术品",
+                        "tag_level": 1
+                    },
+                    {
+                        "confidence": 0.6809999942779541,
+                        "name": "白天",
+                        "parent_name": "其他场景",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.843999981880188,
+                        "name": "信",
+                        "parent_name": "日常用品",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 1.0,
+                        "name": "文本",
+                        "parent_name": "日常用品",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.9070000052452087,
+                        "name": "网页",
+                        "parent_name": "虚拟场景",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.8299999833106995,
+                        "name": "网站",
+                        "parent_name": "虚拟场景",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.7440000176429749,
+                        "name": "海报",
+                        "parent_name": "艺术品",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.6970000267028809,
+                        "name": "小册子",
+                        "parent_name": "其他事物",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.7260000109672546,
+                        "name": "电子产品",
+                        "parent_name": "日常用品",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.7850000262260437,
+                        "name": "插图",
+                        "parent_name": "艺术品",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.8069999814033508,
+                        "name": "手写",
+                        "parent_name": "日常用品",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.6869999766349792,
+                        "name": "画画",
+                        "parent_name": "艺术品",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.9620000123977661,
+                        "name": "颜色",
+                        "parent_name": "其他事物",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.7039999961853027,
+                        "name": "自然景观",
+                        "parent_name": "旅游&地理",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.8460000157356262,
+                        "name": "手机截图",
+                        "parent_name": "其他场景",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.7770000100135803,
+                        "name": "文档和证件",
+                        "parent_name": "日常用品",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.7039999961853027,
+                        "name": "雾",
+                        "parent_name": "自然景观",
+                        "tag_level": 3
+                    },
+                    {
+                        "confidence": 0.9860000014305115,
+                        "name": "黑色",
+                        "parent_name": "颜色",
+                        "tag_level": 3
+                    },
+                    {
+                        "confidence": 0.7260000109672546,
+                        "name": "个人电脑",
+                        "parent_name": "电子产品",
+                        "tag_level": 3
+                    },
+                    {
+                        "confidence": 0.8809999823570251,
+                        "name": "白色",
+                        "parent_name": "颜色",
+                        "tag_level": 3
+                    },
+                    {
+                        "confidence": 0.8790000081062317,
+                        "name": "蓝色",
+                        "parent_name": "颜色",
+                        "tag_level": 3
+                    },
+                    {
+                        "confidence": 0.7770000100135803,
+                        "name": "图表",
+                        "parent_name": "文档和证件",
+                        "tag_level": 3
+                    },
+                    {
+                        "confidence": 0.9039999842643738,
+                        "name": "灰色",
+                        "parent_name": "颜色",
+                        "tag_level": 3
+                    }
+                ],
+                "video_media_audio_stream": [],
+                "video_media_video_stream": [],
+                "width": 1080
+            }
+        },
+        {
+            "drive_id": "110259420",
+            "file_id": "6357333ddcd672246b214e349c148251d66ee083",
+            "category": "image",
+            "content_hash": "8AAE160D69816E074D38BBCEEF782388A47E90D8",
+            "content_hash_name": "sha1",
+            "content_type": "image/jpeg",
+            "crc64_hash": "10118298639193898540",
+            "created_at": "2022-10-25T00:52:13.359Z",
+            "domain_id": "bj29",
+            "download_url": "https://cn-beijing-data.aliyundrive.net/X1KecLhJ%2F110259420%2F6357333ddcd672246b214e349c148251d66ee083%2F6357333d6db993899c564bf78e8189f54919688a?di=bj29&dr=110259420&f=6357333ddcd672246b214e349c148251d66ee083&response-content-disposition=attachment%3B%20filename%2A%3DUTF-8%27%27IMG_20221020_193209.jpg&security-token=CAISvgJ1q6Ft5B2yfSjIr5bCOOrunLtIwKyhexX0okQ4asxPjJTThjz2IHhMf3NpBOkZvvQ1lGlU6%2Fcalq5rR4QAXlDfNWPSBQL4q1HPWZHInuDox55m4cTXNAr%2BIhr%2F29CoEIedZdjBe%2FCrRknZnytou9XTfimjWFrXWv%2Fgy%2BQQDLItUxK%2FcCBNCfpPOwJms7V6D3bKMuu3OROY6Qi5TmgQ41Uh1jgjtPzkkpfFtkGF1GeXkLFF%2B97DRbG%2FdNRpMZtFVNO44fd7bKKp0lQLs0ARrv4r1fMUqW2X543AUgFLhy2KKMPY99xpFgh9a7j0iCbSGyUu%2FhcRm5sw9%2Byfo34lVYneA%2Fzawmkr7uHwufJ7FxfIREfquk63pvSlHLcLPe0Kjzzleo2k1XRPVFF%2B535IaHXuToXDnvSiLGy5vvXtuMkagAFrxS%2Fyv66OwS0VdRVDKn9sKXtfgXiTyDqO9SQc%2F5gT%2BASJEN7fgDRDe4hXzoQIIKuU%2BCZf%2FkOqdXELO1w3zo4kIKKwr8Jr%2FqFqVHlJ%2BcXCvGuo4j31MNYDGKE0%2F8UaeRxzOpXFtK4TetJWsr065Sp0giH2UGUs3mhJoHp8MKiUmCAA&u=AK&x-oss-access-key-id=STS.NUwsPZqdiwnJy3EFDmfCccQxd&x-oss-expires=1737189687&x-oss-signature=0WpQisrfDth7p%2FLqX%2F3q%2BmKhGl81f032SqIoztV8ZNk%3D&x-oss-signature-version=OSS2",
+            "encrypt_mode": "none",
+            "file_extension": "jpg",
+            "hidden": false,
+            "image_media_metadata": {
+                "address_line": "陕西省西安市雁塔区丈八街道来包辣条(甘家寨东区店)甘家寨东区",
+                "city": "西安市",
+                "country": "中国",
+                "district": "雁塔区",
+                "faces": "[{\"FaceId\":\"2f93c440-88f5-4194-bf3d-c816416f177d\",\"GroupId\":\"figure-cluster-id-unavailable\",\"FaceConfidence\":0.98,\"Age\":15,\"AgeConfidence\":6,\"Gender\":\"female\",\"GenderConfidence\":0.936,\"Emotion\":\"none\",\"EmotionConfidence\":0.994,\"FaceAttributes\":{\"Mask\":\"none\",\"MaskConfidence\":0.68,\"Beard\":\"none\",\"BeardConfidence\":0.993,\"Glasses\":\"none\",\"GlassesConfidence\":0.999,\"Mouth\":\"close\",\"MouthConfidence\":0.979,\"Hat\":\"none\",\"HatConfidence\":0.994,\"HeadPose\":{\"Pitch\":-70.898,\"Roll\":75.052,\"Yaw\":-70.906},\"FaceBoundary\":{\"Width\":346,\"Height\":601,\"Top\":225,\"Left\":360}}}]",
+                "height": 4000,
+                "image_quality": {
+                    "overall_score": 0.6299999952316284
+                },
+                "image_tags": [
+                    {
+                        "confidence": 0.7120000123977661,
+                        "name": "体育运动",
+                        "tag_level": 1
+                    },
+                    {
+                        "confidence": 0.9210000038146973,
+                        "name": "面部",
+                        "tag_level": 1
+                    },
+                    {
+                        "confidence": 1.0,
+                        "name": "衣服",
+                        "tag_level": 1
+                    },
+                    {
+                        "confidence": 0.8090000152587891,
+                        "name": "其他事物",
+                        "tag_level": 1
+                    },
+                    {
+                        "confidence": 0.6439999938011169,
+                        "name": "T恤",
+                        "parent_name": "衣服",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.7789999842643738,
+                        "name": "女性",
+                        "parent_name": "面部",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.6309999823570251,
+                        "name": "武器",
+                        "parent_name": "其他事物",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.7120000123977661,
+                        "name": "射击",
+                        "parent_name": "体育运动",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.8870000243186951,
+                        "name": "人像",
+                        "parent_name": "面部",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.8090000152587891,
+                        "name": "颜色",
+                        "parent_name": "其他事物",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.9210000038146973,
+                        "name": "人",
+                        "parent_name": "面部",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 1.0,
+                        "name": "外套",
+                        "parent_name": "衣服",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 1.0,
+                        "name": "服装",
+                        "parent_name": "衣服",
+                        "tag_level": 2
+                    },
+                    {
+                        "confidence": 0.6309999823570251,
+                        "name": "枪支",
+                        "parent_name": "武器",
+                        "tag_level": 3
+                    },
+                    {
+                        "confidence": 0.7480000257492065,
+                        "name": "紫色",
+                        "parent_name": "颜色",
+                        "tag_level": 3
+                    },
+                    {
+                        "confidence": 0.8090000152587891,
+                        "name": "蓝色",
+                        "parent_name": "颜色",
+                        "tag_level": 3
+                    }
+                ],
+                "location": "34.219143,108.903354",
+                "province": "陕西省",
+                "time": "2022-10-20T11:32:10.000Z",
+                "township": "丈八街道",
+                "width": 1846
+            },
+            "labels": [
+                "面部",
+                "衣服",
+                "其他事物",
+                "颜色",
+                "人",
+                "外套",
+                "服装",
+                "蓝色"
+            ],
+            "name": "IMG_20221020_193209.jpg",
+            "parent_file_id": "root",
+            "size": 2747187,
+            "starred": false,
+            "status": "available",
+            "thumbnail": "https://cn-beijing-data.aliyundrive.net/X1KecLhJ%2F110259420%2F6357333ddcd672246b214e349c148251d66ee083%2F6357333d6db993899c564bf78e8189f54919688a?di=bj29&dr=110259420&f=6357333ddcd672246b214e349c148251d66ee083&security-token=CAISvgJ1q6Ft5B2yfSjIr5bCOOrunLtIwKyhexX0okQ4asxPjJTThjz2IHhMf3NpBOkZvvQ1lGlU6%2Fcalq5rR4QAXlDfNWPSBQL4q1HPWZHInuDox55m4cTXNAr%2BIhr%2F29CoEIedZdjBe%2FCrRknZnytou9XTfimjWFrXWv%2Fgy%2BQQDLItUxK%2FcCBNCfpPOwJms7V6D3bKMuu3OROY6Qi5TmgQ41Uh1jgjtPzkkpfFtkGF1GeXkLFF%2B97DRbG%2FdNRpMZtFVNO44fd7bKKp0lQLs0ARrv4r1fMUqW2X543AUgFLhy2KKMPY99xpFgh9a7j0iCbSGyUu%2FhcRm5sw9%2Byfo34lVYneA%2Fzawmkr7uHwufJ7FxfIREfquk63pvSlHLcLPe0Kjzzleo2k1XRPVFF%2B535IaHXuToXDnvSiLGy5vvXtuMkagAFrxS%2Fyv66OwS0VdRVDKn9sKXtfgXiTyDqO9SQc%2F5gT%2BASJEN7fgDRDe4hXzoQIIKuU%2BCZf%2FkOqdXELO1w3zo4kIKKwr8Jr%2FqFqVHlJ%2BcXCvGuo4j31MNYDGKE0%2F8UaeRxzOpXFtK4TetJWsr065Sp0giH2UGUs3mhJoHp8MKiUmCAA&u=AK&x-oss-access-key-id=STS.NUwsPZqdiwnJy3EFDmfCccQxd&x-oss-expires=1737189687&x-oss-process=image%2Fresize%2Cw_480%2Fformat%2Cavif&x-oss-signature=iFXm%2FHc5o8OwklZKMhmeKMtKUb6kC3zZwXoLeN%2FEcLQ%3D&x-oss-signature-version=OSS2",
+            "type": "file",
+            "updated_at": "2022-10-25T00:52:21.470Z",
+            "upload_id": "75797ECF640E45F8B6705F76F8D1A506",
+            "url": "https://cn-beijing-data.aliyundrive.net/X1KecLhJ%2F110259420%2F6357333ddcd672246b214e349c148251d66ee083%2F6357333d6db993899c564bf78e8189f54919688a?di=bj29&dr=110259420&f=6357333ddcd672246b214e349c148251d66ee083&security-token=CAISvgJ1q6Ft5B2yfSjIr5bCOOrunLtIwKyhexX0okQ4asxPjJTThjz2IHhMf3NpBOkZvvQ1lGlU6%2Fcalq5rR4QAXlDfNWPSBQL4q1HPWZHInuDox55m4cTXNAr%2BIhr%2F29CoEIedZdjBe%2FCrRknZnytou9XTfimjWFrXWv%2Fgy%2BQQDLItUxK%2FcCBNCfpPOwJms7V6D3bKMuu3OROY6Qi5TmgQ41Uh1jgjtPzkkpfFtkGF1GeXkLFF%2B97DRbG%2FdNRpMZtFVNO44fd7bKKp0lQLs0ARrv4r1fMUqW2X543AUgFLhy2KKMPY99xpFgh9a7j0iCbSGyUu%2FhcRm5sw9%2Byfo34lVYneA%2Fzawmkr7uHwufJ7FxfIREfquk63pvSlHLcLPe0Kjzzleo2k1XRPVFF%2B535IaHXuToXDnvSiLGy5vvXtuMkagAFrxS%2Fyv66OwS0VdRVDKn9sKXtfgXiTyDqO9SQc%2F5gT%2BASJEN7fgDRDe4hXzoQIIKuU%2BCZf%2FkOqdXELO1w3zo4kIKKwr8Jr%2FqFqVHlJ%2BcXCvGuo4j31MNYDGKE0%2F8UaeRxzOpXFtK4TetJWsr065Sp0giH2UGUs3mhJoHp8MKiUmCAA&u=AK&x-oss-access-key-id=STS.NUwsPZqdiwnJy3EFDmfCccQxd&x-oss-expires=1737189687&x-oss-process=image%2Fresize%2Cw_1920%2Fformat%2Cavif&x-oss-signature=GGixmRot8b7jRUx%2FYP20L4%2FNvmdfCZF0c2yE47j1nmQ%3D&x-oss-signature-version=OSS2",
+            "user_meta": "{\"size\":2747187,\"android_local_file_path\":\"/storage/emulated/0/DCIM/Camera/IMG_20221020_193209.jpg\",\"device_meta\":[{\"identifier\":\"1073966_/storage/emulated/0/DCIM/Camera/IMG_20221020_193209.jpg\",\"utd_id\":\"XVKxNFxybMEDAM4aiRz9ki3h\",\"platform\":\"android\"}],\"android_identify_id\":\"1073966\",\"time\":1666265530000,\"hash\":\"B56570AD850880EEB0ADCAE7A814970F111E58E8\"}"
+        }
+    ]
+}

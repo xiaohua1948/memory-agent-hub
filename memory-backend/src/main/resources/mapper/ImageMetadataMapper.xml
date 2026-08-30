@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.memory.xiaohua.mapper.ImageMetaDataMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.memory.xiaohua.model.entity.ImageMetaData">
+        <id column="file_id" property="fileId" />
+        <result column="software" property="software" />
+        <result column="date_time_original" property="dateTimeOriginal" />
+        <result column="exposure_program" property="exposureProgram" />
+        <result column="exposure_time" property="exposureTime" />
+        <result column="f_number" property="fNumber" />
+        <result column="iso" property="iso" />
+        <result column="focal_length" property="focalLength" />
+        <result column="focal_length35" property="focalLength35" />
+        <result column="altitude" property="altitude" />
+        <result column="altitude_ref" property="altitudeRef" />
+        <result column="version" property="version" />
+        <result column="aperture_value" property="apertureValue" />
+        <result column="shutter_speed" property="shutterSpeed" />
+        <result column="metering_mode" property="meteringMode" />
+        <result column="white_balance" property="whiteBalance" />
+        <result column="color_space" property="colorSpace" />
+        <result column="sensing_method" property="sensingMethod" />
+        <result column="subject_distance" property="subjectDistance" />
+        <result column="scene_type" property="sceneType" />
+    </resultMap>
+
+</mapper>

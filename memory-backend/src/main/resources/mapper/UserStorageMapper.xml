@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.memory.xiaohua.mapper.UserStorageMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.memory.xiaohua.model.entity.UserStorage">
+        <id column="user_id" property="userId" />
+        <result column="total_space" property="totalSpace" />
+        <result column="used_space" property="usedSpace" />
+        <result column="account_status" property="accountStatus" />
+        <result column="membership_days" property="membershipDays" />
+    </resultMap>
+
+</mapper>

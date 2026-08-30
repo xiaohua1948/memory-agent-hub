@@ -1,0 +1,61 @@
+server:
+  port: 8088
+
+spring:
+  application:
+    name: memory-backend
+  profiles:
+    # 默认使用开发环境，启动时可通过 --spring.profiles.active=prod 切换
+    active: dev
+  servlet:
+    multipart:
+      max-file-size: 10000MB
+      max-request-size: 10000MB
+      enabled: true
+
+# mybatis-plus 公共配置
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      # id自增类型配置
+      id-type: ASSIGN_ID
+      # 逻辑删除字段配置
+      logic-delete-field: deleted
+      logic-not-delete-value: 0
+      logic-delete-value: 1
+    # 控制台mybatis-plus标记
+    banner: false
+  mapper-locations: classpath:/mapper/*.xml
+
+# sa-token 公共配置（jwt-secret-key 按环境区分）
+sa-token:
+  # token 名称（同时也是 cookie 名称）
+  token-name: Authorization
+  # token 有效期（单位：秒） 默认30天，-1 代表永久有效
+  timeout: 2592000
+  # token 最低活跃频率（单位：秒），如果 token 超过此时间没有访问系统就会被冻结，默认-1 代表不限制，永不冻结
+  active-timeout: -1
+  # 是否允许同一账号多地同时登录（为 true 时允许一起登录, 为 false 时新登录挤掉旧登录）
+  is-concurrent: false
+  # 在多人登录同一账号时，是否共用一个 token（为 true 时共用一个, 为 false 时每次登录新建一个）
+  is-share: true
+  # token 风格（默认可取值：uuid、simple-uuid、random-32、random-64、random-128、tik）
+  token-style: uuid
+  # 是否输出操作日志
+  is-log: true
+  # 使用redis存取
+  is-read-cookie: false
+
+springdoc:
+  api-docs:
+    enabled: true # 开启OpenApi接口
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true # 开启swagger界面，依赖OpenApi，需要OpenApi同时开启
+
+# 高德 API 公共配置（key 按环境区分）
+amp:
+  geo:
+    url: https://restapi.amap.com/v3/geocode/regeo

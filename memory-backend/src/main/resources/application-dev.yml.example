@@ -1,0 +1,73 @@
+# ==================== 开发环境配置（模板） ====================
+#
+# 使用方式：
+#   1. 复制本文件为 application-dev.yml（该文件已被 .gitignore 忽略）
+#   2. 填入本地实际的连接信息与密钥
+#   3. 正常启动即可：mvn spring-boot:run
+#
+# 说明：本模板可提交；application-dev.yml 含本机密钥，禁止提交。
+# ============================================================
+
+spring:
+  # mysql配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/memory_space?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password:
+  # redis配置
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      database: 0
+  # 邮箱配置
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username:
+    password: # QQ邮箱授权码
+    default-encoding: utf-8
+    protocol: smtps
+    code:
+      time: 300
+
+# 开发环境打印 SQL，便于调试
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+sa-token:
+  jwt-secret-key:
+
+# minio oss配置
+minio:
+  access-key:
+  secret-key:
+  url: http://127.0.0.1:9000
+  bucket-name: pictures
+
+# 阿里OSS配置
+aliyun:
+  oss:
+    endpoint: oss-cn-beijing.aliyuncs.com
+    accessKeyId:
+    accessKeySecret:
+    bucketName: memory-pictures
+
+# 高德API_KEY
+amp:
+  api:
+    key:
+
+# 华为云图像识别配置
+huawei:
+  cloud:
+    image:
+      ak:
+      sk:
+      region: cn-north-4
+      endpoint: image.cn-north-4.myhuaweicloud.com
+      threshold: 10 # 置信度阈值
+      language: zh # 返回语言

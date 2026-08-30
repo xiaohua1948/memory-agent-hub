@@ -1,0 +1,52 @@
+# ============================================================
+# Memory Backend 生产环境 systemd 单元文件
+#
+# 安装步骤：
+#   1. 复制本文件到 /etc/systemd/system/memory.service
+#   2. 按注释修改 User、路径等占位内容
+#   3. 上传密钥文件到 /opt/memory/env.prod 并设置权限：
+#        chmod 600 /opt/memory/env.prod
+#        chown memory:memory /opt/memory/env.prod
+#   4. 执行：
+#        systemctl daemon-reload
+#        systemctl enable memory
+#        systemctl start memory
+#   5. 查看状态与日志：
+#        systemctl status memory
+#        journalctl -u memory -f
+# ============================================================
+
+[Unit]
+Description=Memory Space Backend
+After=network.target mysql.service redis.service
+Wants=mysql.service redis.service
+
+[Service]
+# 建议使用独立的低权限用户运行，不要用 root
+User=memory
+Group=memory
+
+WorkingDirectory=/opt/memory
+EnvironmentFile=/opt/memory/env.prod
+
+ExecStart=/usr/bin/java -Xms512m -Xmx2g \
+  -jar /opt/memory/memory-0.0.1-SNAPSHOT.jar \
+  --spring.profiles.active=prod
+
+# 进程被杀时自动重启
+Restart=always
+RestartSec=10
+
+# 安全加固（按需启用）
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# 若需要应用写日志到 /opt/memory/logs，则改为 ReadWritePaths=/opt/memory/logs
+ReadWritePaths=/opt/memory/logs
+
+StandardOutput=append:/opt/memory/logs/stdout.log
+StandardError=append:/opt/memory/logs/stderr.log
+
+[Install]
+WantedBy=multi-user.target

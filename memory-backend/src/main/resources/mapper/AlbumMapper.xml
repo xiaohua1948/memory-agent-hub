@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.memory.xiaohua.mapper.AlbumMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.memory.xiaohua.model.entity.Album">
+        <id column="album_id" property="albumId"/>
+        <result column="album_name" property="albumName"/>
+        <result column="description" property="description"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="user_id" property="userId"/>
+        <result column="status" property="status"/>
+    </resultMap>
+
+    <resultMap id="fileInfoVOResultMap" type="com.memory.xiaohua.model.vo.entity.FileInfo">
+        <id property="fileId" column="file_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="originFileName" column="origin_file_name"/>
+        <result property="size" column="size"/>
+        <result column="width" property="width"/>
+        <result column="height" property="height"/>
+        <result property="contentType" column="content_type"/>
+        <result property="category" column="category"/>
+        <result property="duration" column="duration"/>
+        <result property="fileUrl" column="file_url"/>
+        <result property="thumbnailUrl" column="thumbnail_url"/>
+    </resultMap>
+
+    <resultMap id="fileInfoListVOResultMap" type="com.memory.xiaohua.model.vo.FileInfoListVO">
+        <result property="time" column="group_date"/>
+        <collection
+                property="fileList"
+                ofType="com.memory.xiaohua.model.vo.entity.FileInfo"
+                resultMap="fileInfoVOResultMap"/>
+    </resultMap>
+
+
+    <resultMap id="AlbumResultVOMap" type="com.memory.xiaohua.model.vo.album.AlbumVO">
+        <id column="album_id" property="albumId"/>
+        <result column="album_name" property="albumName"/>
+        <!--        相册封面Url-->
+        <result column="coverUrl" property="coverUrl"/>
+        <result column="imageCount" property="imageCount"/>
+        <result column="videoCount" property="videoCount"/>
+        <result column="description" property="description"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="user_id" property="userId"/>
+    </resultMap>
+    <resultMap id="LocationAlbumVOMap" type="com.memory.xiaohua.model.vo.album.LocationAlbumVO">
+        <result column="locationLevel" property="locationLevel"/>
+        <result column="locationValue" property="locationValue"/>
+        <result column="coverUrl" property="coverUrl"/>
+        <result column="total" property="total"/>
+        <result column="status" property="status"/>
+    </resultMap>
+
+    <resultMap id="ModelAlbumVOMap" type="com.memory.xiaohua.model.vo.album.ModelAlbumVO">
+        <result property="model" column="model" />
+        <result property="make" column="make" />
+        <result property="coverUrl" column="cover_url" />
+        <result property="total" column="total" />
+    </resultMap>
+
+    <select id="selectAlbumById" resultMap="AlbumResultVOMap">
+        SELECT
+        album.*,
+        first_cover.thumbnail_url AS coverUrl,
+        COALESCE(file_stats.imageCount, 0) AS imageCount,
+        COALESCE(file_stats.videoCount, 0) AS videoCount
+        FROM album
+        LEFT JOIN (
+        SELECT
+        ap.album_id,
+        file.thumbnail_url,
+        ROW_NUMBER() OVER (PARTITION BY ap.album_id ORDER BY ap.is_cover DESC, ap.id) AS rn
+        FROM album_picture ap
+        JOIN file ON ap.file_id = file.file_id
+        ) first_cover ON album.album_id = first_cover.album_id AND first_cover.rn = 1
+        LEFT JOIN (
+        SELECT
+        ap.album_id,
+        COUNT(CASE WHEN f.category = 'image' THEN 1 END) AS imageCount,
+        COUNT(CASE WHEN f.category = 'video' THEN 1 END) AS videoCount
+        FROM album_picture ap
+        JOIN file f ON ap.file_id = f.file_id
+        GROUP BY ap.album_id
+        ) file_stats ON album.album_id = file_stats.album_id
+        <where>
+            album.user_id = #{userId} and album.album_id = #{albumId}
+        </where>
+    </select>
+    <select id="selectAllAlbum" resultMap="AlbumResultVOMap">
+        SELECT
+        album.*,
+        first_cover.thumbnail_url AS coverUrl,
+        COALESCE(file_stats.imageCount, 0) AS imageCount,
+        COALESCE(file_stats.videoCount, 0) AS videoCount
+        FROM album
+        LEFT JOIN (
+        SELECT
+        ap.album_id,
+        file.thumbnail_url,
+        ROW_NUMBER() OVER (PARTITION BY ap.album_id ORDER BY ap.is_cover DESC, ap.id) AS rn
+        FROM album_picture ap
+        JOIN file ON ap.file_id = file.file_id
+        ) first_cover ON album.album_id = first_cover.album_id AND first_cover.rn = 1
+        LEFT JOIN (
+        SELECT
+        ap.album_id,
+        COUNT(CASE WHEN f.category = 'image' THEN 1 END) AS imageCount,
+        COUNT(CASE WHEN f.category = 'video' THEN 1 END) AS videoCount
+        FROM album_picture ap
+        JOIN file f ON ap.file_id = f.file_id
+        GROUP BY ap.album_id
+        ) file_stats ON album.album_id = file_stats.album_id
+        <where>
+            album.user_id = #{userId}
+        </where>
+        ORDER BY
+        <choose>
+            <when test="orderKeyword == 'create_time' or orderKeyword == 'update_time'">
+                album.${orderKeyword}
+            </when>
+            <otherwise>
+                album.create_time
+            </otherwise>
+        </choose>
+        <choose>
+            <when test="orderType == 'asc' or orderType == 'desc'">
+                ${orderType}
+            </when>
+            <otherwise>
+                DESC
+            </otherwise>
+        </choose>
+    </select>
+
+
+    <select id="selectAllLocationAlbum" resultMap="LocationAlbumVOMap">
+        SELECT #{locationLevel} as locationLevel,
+        <choose>
+            <when test="locationLevel == 'country'">
+                country AS locationValue
+            </when>
+            <when test="locationLevel == 'province'">
+                CONCAT(country,',', province) AS locationValue
+            </when>
+            <when test="locationLevel == 'city'">
+                CONCAT(province,',', city) AS locationValue
+            </when>
+            <when test="locationLevel == 'district'">
+                CONCAT(city,',', district) AS locationValue
+            </when>
+        </choose>,
+        MIN(f.thumbnail_url) AS coverUrl,
+        COUNT(uf.file_id) AS total
+        FROM user_file uf
+        INNER JOIN file f ON uf.file_id = f.file_id
+        INNER JOIN location l ON uf.file_id = l.file_id
+        WHERE uf.user_id = #{userId}
+        AND uf.is_deleted = 0
+      -- 假设相册只包含图片
+        GROUP BY
+        <choose>
+            <when test="locationLevel == 'country'">l.country</when>
+            <when test="locationLevel == 'province'">l.country, l.province</when>
+            <when test="locationLevel == 'city'">l.province, l.city</when>
+            <when test="locationLevel == 'district'">l.city, l.district</when>
+        </choose>
+
+    </select>
+
+     <select id="selectAllModelAlbum" resultMap="ModelAlbumVOMap">
+         SELECT
+         sub.make AS makeName,
+         sub.model AS modelName,
+         sub.cover_url,
+         sub.total
+         FROM (
+         SELECT
+         f.make,
+         f.model,
+         f.thumbnail_url AS cover_url,
+         COUNT(*) OVER (PARTITION BY f.make, f.model) AS total,
+         ROW_NUMBER() OVER (PARTITION BY f.make, f.model ORDER BY f.date_time_original DESC) AS rn
+         FROM
+         file f
+         INNER JOIN
+         user_file uf ON f.file_id = uf.file_id
+         WHERE
+         uf.user_id = #{userId}
+         AND uf.is_deleted = 0
+         ) sub
+         WHERE
+         sub.rn = 1
+         ORDER BY
+         makeName
+
+     </select>
+    <select id="getModelFileInfo" resultMap="fileInfoListVOResultMap">
+        SELECT
+        file.*,
+        DATE(${orderKeyword}) AS group_date,
+        video_meta_data.duration AS duration
+        FROM file
+        INNER JOIN user_file uf ON file.file_id = uf.file_id
+        LEFT JOIN video_meta_data ON file.file_id = video_meta_data.file_id
+
+        <!-- 动态 WHERE 条件 -->
+        <where>
+            <!-- 基本条件 -->
+            uf.is_deleted = #{isDeleted}
+            AND uf.user_id = #{userId}
+
+            <!-- 设备制造商条件 -->
+            <if test="makeName != null ">
+                AND file.make = #{makeName} <!-- 假设 `make` 字段在 `file` 表中 -->
+            </if>
+
+            <!-- 设备型号条件 -->
+            <if test="modelName != null ">
+                AND file.model = #{modelName} <!-- 假设 `model` 字段在 `file` 表中 -->
+            </if>
+
+
+            <!-- 文件类型条件 -->
+            <choose>
+                <when test="imageTypeText == 'picture'">
+                    AND file.category = 'image'
+                    AND file.content_type != 'image/gif'
+                </when>
+                <when test="imageTypeText == 'gif'">
+                    AND file.content_type = 'image/gif'
+                </when>
+                <when test="imageTypeText == 'video'">
+                    AND file.category = 'video'
+                </when>
+            </choose>
+        </where>
+
+        <!-- 分组 -->
+        <choose>
+            <when test="orderKeyword != null and orderKeyword != ''">
+                GROUP BY uf.user_id, file.file_id, DATE(${orderKeyword})
+            </when>
+            <otherwise>
+                GROUP BY uf.user_id, file.file_id
+            </otherwise>
+        </choose>
+
+        <!-- 排序 -->
+        ORDER BY
+        <choose>
+            <when test="orderType != null and orderType in ('asc', 'desc')">
+                ${orderKeyword} ${orderType}
+            </when>
+            <otherwise>
+                ${orderKeyword} DESC
+            </otherwise>
+        </choose>
+    </select>
+
+    <select id="getPersonFileInfo" resultMap="fileInfoListVOResultMap">
+        SELECT
+        file.*,
+        DATE(${orderKeyword}) AS group_date,
+        video_meta_data.duration AS duration
+        FROM file
+        INNER JOIN user_file uf ON file.file_id = uf.file_id
+        LEFT JOIN video_meta_data ON file.file_id = video_meta_data.file_id
+        INNER JOIN face on file.file_id = face.file_id
+        INNER JOIN person_face pf on face.face_id = pf.face_id
+        <where>
+            uf.is_deleted = #{isDeleted}
+            AND uf.user_id = #{userId}
+            AND pf.person_id = #{personId}
+            <!-- 文件类型条件（保持原逻辑） -->
+            <choose>
+                <when test="imageTypeText == 'picture'">
+                    AND file.category = 'image'
+                    AND file.content_type != 'image/gif'
+                </when>
+                <when test="imageTypeText == 'gif'">
+                    AND file.content_type = 'image/gif'
+                </when>
+                <when test="imageTypeText == 'video'">
+                    AND file.category = 'video'
+                </when>
+            </choose>
+        </where>
+
+        <!-- 分组逻辑（保持原结构） -->
+        <choose>
+            <when test="orderKeyword != null and orderKeyword != ''">
+                GROUP BY uf.user_id, file.file_id, DATE(${orderKeyword})
+            </when>
+            <otherwise>
+                GROUP BY uf.user_id, file.file_id
+            </otherwise>
+        </choose>
+
+        <!-- 排序逻辑（保持原结构） -->
+        ORDER BY
+        <choose>
+            <when test="orderType != null and orderType in ('asc', 'desc')">
+                ${orderKeyword} ${orderType}
+            </when>
+            <otherwise>
+                ${orderKeyword} DESC
+            </otherwise>
+        </choose>
+    </select>
+
+    <update id="updateAlbumCover">
+        UPDATE album_picture
+        SET is_cover = CASE WHEN file_id = #{fileId} THEN true ELSE false END
+        WHERE album_id = #{albumId}
+          AND user_id = #{userId}
+    </update>
+
+
+    <!--    通过id删除相册-->
+    <delete id="deleteByAlbumIds">
+        <foreach collection="albumIds" item="id" index="index" open="" close="" separator=";">
+            DELETE FROM album
+            WHERE album_id = #{id} AND user_id = #{userId}
+        </foreach>
+    </delete>
+
+
+    <!-- 删除关联表 -->
+    <delete id="removePictureFromAlbum">
+        DELETE FROM album_picture
+        <where>
+            user_id = #{userId}
+            <!-- 根据相册ID集合批量删除 -->
+            <if test="albumIds != null and !albumIds.isEmpty()">
+                AND album_id IN
+                <foreach collection="albumIds" item="albumId" open="(" separator="," close=")">
+                    #{albumId}
+                </foreach>
+            </if>
+            <!-- 根据文件ID集合批量删除 -->
+            <if test="fileIds != null and !fileIds.isEmpty()">
+                AND file_id IN
+                <foreach collection="fileIds" item="fileId" open="(" separator="," close=")">
+                    #{fileId}
+                </foreach>
+            </if>
+            <!-- 双重保险：防止无参数时全表删除 -->
+            <if test="(albumIds == null or albumIds.isEmpty())
+            and (fileIds == null or fileIds.isEmpty()) and (userId == null)">
+                1 = 0
+            </if>
+        </where>
+    </delete>
+<!--    删除相册-->
+    <delete id="deleteAlbumByIds">
+        delete from album   <where> user_id = #{userId}
+        <if test="albumIds != null and !albumIds.isEmpty()">
+            AND  album_id IN
+            <foreach collection="albumIds" item="albumId" open="(" separator="," close=")">
+                #{albumId}
+            </foreach>
+        </if>
+        <if test="(albumIds == null or albumIds.isEmpty())
+            and (userId == null)">
+            1 = 0
+        </if>
+    </where>
+    </delete>
+
+
+</mapper>

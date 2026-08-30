@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.memory.xiaohua.mapper.LocationMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.memory.xiaohua.model.entity.Location">
+        <id column="file_id" property="fileId" />
+        <result column="full_address" property="fullAddress" />
+        <result column="country" property="country" />
+        <result column="province" property="province" />
+        <result column="city" property="city" />
+        <result column="district" property="district" />
+        <result column="township" property="township" />
+        <result column="street" property="street" />
+        <result column="street_number" property="streetNumber" />
+    </resultMap>
+
+
+    <select id="selectAllLocation" resultType="com.memory.xiaohua.model.vo.visual.VisualLocationVO">
+        SELECT
+            city AS city,
+            COUNT(*) AS pictureCount,  -- 统计所有照片
+            MAX(coverUrl) AS coverUrl,
+            MAX(longitude) AS longitude,
+            MAX(latitude) AS latitude
+        FROM (
+                 SELECT
+                     l.city,
+                     f.thumbnail_url AS coverUrl,
+                     f.longitude,
+                     f.latitude,
+                     ROW_NUMBER() OVER (PARTITION BY l.city ORDER BY f.date_time_original DESC) AS rn
+                 FROM user_file uf
+                          INNER JOIN file f ON uf.file_id = f.file_id
+                          INNER JOIN location l ON uf.file_id = l.file_id
+                 WHERE uf.user_id = #{userId} AND uf.is_deleted = 0
+             ) sub
+-- WHERE rn = 1  -- 移除此行，保留所有记录
+        GROUP BY city
+    </select>
+
+</mapper>

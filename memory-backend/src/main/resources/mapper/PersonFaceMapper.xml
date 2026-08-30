@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.memory.xiaohua.mapper.PersonFaceMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.memory.xiaohua.model.entity.PersonFace">
+        <id column="id" property="id" />
+        <result column="person_id" property="personId" />
+        <result column="face_id" property="faceId" />
+        <result column="user_id" property="userId" />
+        <result column="representative" property="representative" />
+        <result column="update_time" property="updateTime" />
+    </resultMap>
+    <insert id="insertPersonFaces" parameterType="map">
+        INSERT INTO person_face
+        (user_id, person_id, face_id)
+        VALUES
+        <foreach collection="faceIds" item="faceId" separator=",">
+            (#{userId}, #{personId}, #{faceId})
+        </foreach>
+    </insert>
+</mapper>
