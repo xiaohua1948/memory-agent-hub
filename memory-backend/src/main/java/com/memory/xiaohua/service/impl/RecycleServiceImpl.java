@@ -64,9 +64,11 @@ public class RecycleServiceImpl implements RecycleService {
         }
         //删除关联表
         userFileMapper.dropAllFile(fileIds);
-        QueryWrapper<UserFileEntity> queryWrapper = new QueryWrapper<>();
         for (FileEntity fileEntity : list) {
             String fileId = fileEntity.getFileId();
+            // QueryWrapper 必须在循环内创建，否则 eq 条件会不断叠加（AND file_id='a' AND file_id='b'），
+            // 导致查询永远为空，进而把仍被其他用户持有的文件物理删除
+            QueryWrapper<UserFileEntity> queryWrapper = new QueryWrapper<>();
             queryWrapper.eq("file_id",fileId);
             List<UserFileEntity> userFileEntities = userFileMapper.selectList(queryWrapper);
             if(userFileEntities.isEmpty()){

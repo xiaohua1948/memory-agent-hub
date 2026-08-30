@@ -17,29 +17,6 @@ import java.util.Set;
 @Component
 public class FileUtil {
 
-    public static void main(String[] args) {
-        File file1 = new File("F:/Desktop/1.jpg");
-        File file2 = new File("F:/Desktop/高鹏飞_612731200006150830.jpg");
-
-        System.out.println(  file2.length());
-        halfResolution(file1,file2);
-    }
-    public static void halfResolution(File source,File target) {
-        try {
-            Thumbnails
-                    //传入源文件
-                    .of(source)
-                    //设置分辨率比例因子，不能小于0.0
-                    .scale(0.35)
-                    //输出图片质量，该值介于 double 和 1.0d 和 0.0d之间，值越高质量越高
-                    .outputQuality(0.7)
-                    //目标文件
-                    .toFile(target);
-        } catch (IOException e) {
-            throw new RuntimeException("压缩图片元失败: " + e.getMessage(), e);
-        }
-    }
-
     // 支持的图片类型集合（统一小写带点）
     private static final Set<String> ACCEPT_IMAGE_TYPES = Set.of(
             ".png", ".jpg", ".jpeg", ".gif", ".bmp"

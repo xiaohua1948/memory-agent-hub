@@ -22,7 +22,7 @@ public interface FileService {
 
     Boolean checkIsUpload(Long userId, Long albumId,String fileMd5);
 
-    void saveSharePicture(Long userId, Long albumId,List<String> fileIds);
+    void saveSharePicture(Long userId, Long albumId, List<String> fileIds, String shareToken);
 
 
 

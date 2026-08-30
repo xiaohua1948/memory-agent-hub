@@ -13,6 +13,7 @@ import com.memory.xiaohua.model.dto.UserAccountDTO;
 import com.memory.xiaohua.model.entity.User;
 import com.memory.xiaohua.model.entity.UserStorage;
 import com.memory.xiaohua.model.vo.UserLoginVO;
+import com.memory.xiaohua.model.vo.UserVO;
 import com.memory.xiaohua.service.AuthService;
 import com.memory.xiaohua.utils.auth.PasswordUtil;
 import com.memory.xiaohua.utils.auth.RedisUtil;
@@ -125,7 +126,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         StpUtil.login(userId);
         String tokenValue = StpUtil.getTokenValue();
         userLoginVO.setToken(tokenValue);
-        userLoginVO.setUser(user);
+        userLoginVO.setUser(toUserVO(user));
         return userLoginVO;
     }
 
@@ -153,7 +154,12 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         // 1.校验
         String email = userAccountDTO.getEmail();
         String code = userAccountDTO.getCode();
-        String redisCode = redisUtil.get("email:code:" + email).toString();
+        // 验证码过期时 get 返回 null，先判空避免 NPE
+        Object redisCodeObj = redisUtil.get("email:code:" + email);
+        if (redisCodeObj == null) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "验证码已过期!");
+        }
+        String redisCode = redisCodeObj.toString();
         if(!code.equals(redisCode)){
             throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱验证码错误!");
         }
@@ -170,7 +176,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
 
         String tokenValue = StpUtil.getTokenValue();
         userLoginVO.setToken(tokenValue);
-        userLoginVO.setUser(user);
+        userLoginVO.setUser(toUserVO(user));
         return userLoginVO;
     }
 
@@ -223,9 +229,13 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
             throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱格式不正确!");
         }
 
-        // 2. 验证码校验
+        // 2. 验证码校验（先判空，验证码过期时 get 返回 null，避免 NPE）
         String redisKey = "email:code:" + newEmail;
-        String redisCode = redisUtil.get(redisKey).toString();
+        Object redisCodeObj = redisUtil.get(redisKey);
+        if (redisCodeObj == null) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "验证码已过期!");
+        }
+        String redisCode = redisCodeObj.toString();
         if (!code.equals(redisCode)) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "验证码错误!");
         }
@@ -253,7 +263,25 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
             throw new BusinessException(StatusCode.SYSTEM_ERROR, "邮箱更新失败!");
         }
 
-        // 6. 清理验证码缓存
-        redisUtil.sClear(redisKey);
+        // 6. 清理验证码缓存（验证码是 String 类型，必须用 delete；
+        // sClear 是 Set 类型操作，对 String key 会抛 WRONGTYPE 异常）
+        redisUtil.delete(redisKey);
+    }
+
+    /**
+     * 实体转 VO，剔除 password（密码哈希）、avatarObjectName（MinIO 内部对象名）等敏感/内部字段
+     */
+    private UserVO toUserVO(User user) {
+        UserVO vo = new UserVO();
+        vo.setUserId(user.getUserId());
+        vo.setUserName(user.getUserName());
+        vo.setAccount(user.getAccount());
+        vo.setRole(user.getRole());
+        vo.setEmail(user.getEmail());
+        vo.setCreateTime(user.getCreateTime());
+        vo.setUpdateTime(user.getUpdateTime());
+        vo.setProfile(user.getProfile());
+        vo.setAvatarUrl(user.getAvatarUrl());
+        return vo;
     }
 }

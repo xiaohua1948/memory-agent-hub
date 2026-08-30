@@ -66,6 +66,10 @@ public class SearchController {
         imageTypeText = imageTypeTextSet.contains(imageTypeText) ? imageTypeText : "all";
         Page<FileInfoListVO> res = new Page<>();
         Long userId = Long.parseLong(StpUtil.getLoginId().toString());
+        // searchType 为 null 时 switch 表达式会直接 NPE，必须先校验
+        if (searchType == null) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "搜索类型不能为空!");
+        }
         res = switch (searchType) {
             case "tag" ->
                     fileService.getTagFileInfo(current, size, userId, orderType, orderKeyword, imageTypeText, searchKeyword);

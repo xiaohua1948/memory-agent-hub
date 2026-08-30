@@ -2,7 +2,7 @@ package com.memory.xiaohua.model.vo;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.memory.xiaohua.model.entity.User;
+import com.memory.xiaohua.model.vo.UserVO;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
  */
 @Data
 public class UserLoginVO {
-    // 用户信息
-    private User user;
+    // 用户信息（脱敏 VO，不含密码哈希等敏感字段）
+    private UserVO user;
     private String token;
 }

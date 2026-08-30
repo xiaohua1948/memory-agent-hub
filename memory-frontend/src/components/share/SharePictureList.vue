@@ -303,6 +303,7 @@ const clickSavePicture = async () => {
     }
     const res = await saveSharePicture({
         fileIds: checkfileIds,
+        shareToken: props.shareToken as string,
     })
     if (res.code == 200) {
         ElMessage.success('保存成功！');

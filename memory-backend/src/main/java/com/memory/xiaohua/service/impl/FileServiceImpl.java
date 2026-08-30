@@ -349,7 +349,19 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public void saveSharePicture(Long userId, Long albumId, List<String> fileIds) {
+    public void saveSharePicture(Long userId, Long albumId, List<String> fileIds, String shareToken) {
+        // 越权修复：必须携带有效分享凭证，且保存的文件必须属于该分享，防止任意 fileId 被加入账户
+        if (shareToken == null || shareToken.isBlank()) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "缺少分享凭证!");
+        }
+        Map<String, String> shareMap = redisUtil.hgetAllAsString("share:link:" + shareToken);
+        if (shareMap == null || shareMap.isEmpty()) {
+            throw new BusinessException(StatusCode.NOT_FOUND_ERROR, "分享链接已过期或不存在");
+        }
+        List<String> sharedFileIds = JSON.parseArray(shareMap.get("fileIds"), String.class);
+        if (sharedFileIds == null || !sharedFileIds.containsAll(fileIds)) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "存在不属于该分享的文件!");
+        }
 
         for (String fileId : fileIds) {
             String userHasFile = fileMapper.isUserHasFile(fileId, userId);
@@ -566,6 +578,12 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public String createShareUrl(List<String> fileIds, Long userId, Integer shareDay) {
+        // 越权修复：校验所有文件均归属当前用户，防止用任意 fileId 生成分享链接
+        for (String fileId : fileIds) {
+            if (fileMapper.isUserHasFile(fileId, userId) == null) {
+                throw new BusinessException(StatusCode.PARAMS_ERROR, "存在无权分享的文件!");
+            }
+        }
 
         String shareKey = UUID.randomUUID().toString().replace("-", "");
         // 构造Redis存储数据

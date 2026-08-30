@@ -384,8 +384,7 @@
                  LEFT JOIN image_meta_data img ON f.file_id = img.file_id
                  LEFT JOIN video_meta_data video ON f.file_id = video.file_id
                  INNER JOIN user_file uf ON f.file_id = uf.file_id
-        WHERE f.file_id = #{fileId} limit 1
-        <!--             and uf.user_id = #{userId}-->
+        WHERE f.file_id = #{fileId} AND uf.user_id = #{userId} limit 1
     </select>
 
 

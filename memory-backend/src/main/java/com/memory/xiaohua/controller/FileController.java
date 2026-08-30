@@ -207,9 +207,11 @@ public class FileController {
     @GetMapping("/downloadFileByToken")
     public void downloadFileByToken(HttpServletRequest request, HttpServletResponse response, String downloadToken) {
 
-        DownLoadInfoDTO downLoadInfoDTO = (DownLoadInfoDTO) redisUtil.get("tempDownload:" + downloadToken);
-
         if (downloadToken == null) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "令牌不能为空!");
+        }
+        DownLoadInfoDTO downLoadInfoDTO = (DownLoadInfoDTO) redisUtil.get("tempDownload:" + downloadToken);
+        if (downLoadInfoDTO == null) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "令牌已过期!");
         }
         List<String> fileIds = downLoadInfoDTO.getFileIds();
@@ -231,8 +233,9 @@ public class FileController {
     @PostMapping("/selectMetaDataByFileId")
     @Operation(summary = "获取文件媒体信息", description = "获取文件媒体信息")
     public BaseResponse<?> selectMetaDataByFileId(String fileId) {
-//        Long userId = Long.parseLong(StpUtil.getLoginId().toString());
-        FileMetaDataVO fileMetaDataVO = fileService.selectFileMetaDataById(fileId, null);
+        // 越权修复：校验文件归属当前用户（元数据含 GPS 定位等隐私）
+        Long userId = Long.parseLong(StpUtil.getLoginId().toString());
+        FileMetaDataVO fileMetaDataVO = fileService.selectFileMetaDataById(fileId, userId);
         return ResultUtil.success(fileMetaDataVO, "获取数据成功");
     }
 
@@ -258,7 +261,7 @@ public class FileController {
 
 
     @PostMapping("/saveSharePicture")
-    public BaseResponse<?> saveSharePicture(HttpServletRequest request, @RequestParam List<String> fileIds, Long albumId) {
+    public BaseResponse<?> saveSharePicture(HttpServletRequest request, @RequestParam List<String> fileIds, Long albumId, String shareToken) {
         if (fileIds == null || fileIds.isEmpty()) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "参数错误!");
         }
@@ -267,7 +270,7 @@ public class FileController {
         }
         Long userId = Long.parseLong(StpUtil.getLoginId().toString());
 
-        fileService.saveSharePicture(userId, albumId, fileIds);
+        fileService.saveSharePicture(userId, albumId, fileIds, shareToken);
         //日志记录HttpServletRequest request
         recordService.createRecordLog("保存分享照片", fileIds.size(), userId, request);
         return ResultUtil.success("保存成功！");
