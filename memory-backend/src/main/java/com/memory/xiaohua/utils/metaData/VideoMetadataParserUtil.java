@@ -6,6 +6,7 @@ import org.bytedeco.ffmpeg.global.avutil;
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.Java2DFrameConverter;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,14 +27,11 @@ import java.util.regex.Pattern;
  * @author: xiaohua
  * @date: 2025/2/19,21:14
  */
+@Slf4j
 @Component
 public class VideoMetadataParserUtil {
 
-    public static void main(String[] args) {
-        VideoMetadataParserUtil videoMetadataParserUtil = new VideoMetadataParserUtil();
-        VideoMetaData videoMetadata = videoMetadataParserUtil.GetVideoMetadata("F:\\pictures\\视频\\2.mp4");
-        System.out.println(videoMetadata);
-    }
+    // #19 修复：删除调试 main 方法（含本地硬编码路径）
 
     private static void mapMetadata(VideoMetaData metadata, String key, String value) {
         switch (key.toLowerCase()) {
@@ -176,7 +174,6 @@ public class VideoMetadataParserUtil {
             BufferedImage image = converter.getBufferedImage(frame);
 
             image = applyRotation(image, (int) rotate);  // 关键修复点：应用旋转校正
-            System.out.println(rotate);
             // 5. 输出处理后的图像
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             ImageIO.write(image, "jpg", outputStream);

@@ -17,6 +17,7 @@ import com.memory.xiaohua.service.AlbumService;
 import com.memory.xiaohua.service.FileService;
 import com.memory.xiaohua.service.RecordService;
 import com.memory.xiaohua.utils.file.FileUtil;
+import com.memory.xiaohua.utils.RedisKeyConstants;
 import com.memory.xiaohua.utils.auth.RedisUtil;
 import com.memory.xiaohua.utils.file.MinioOSSUtil;
 import com.memory.xiaohua.utils.picture.ImageTagUtil;
@@ -171,11 +172,7 @@ public class FileController {
         Long userId = Long.parseLong(StpUtil.getLoginId().toString());
         if (albumId == -1) albumId = null;
         Page<FileInfoListVO> page = fileService.getFileInfoList(c, s, orderType, orderKeyword, imageTypeText, locationLevel, locationValue, userId, albumId, false);
-        BaseResponse<Page<FileInfoListVO>> res = new BaseResponse<>();
-        res.setData(page);
-        res.setCode(200);
-        res.setMessage("获取文件信息成功!");
-        return res;
+        return ResultUtil.success(page, "获取文件信息成功!");
     }
 
     @PostMapping("/deleteFileByIds")
@@ -205,7 +202,7 @@ public class FileController {
 
     @PostMapping("/getDownloadSharedFileToken")
     public BaseResponse<?> downloadSharedFile(String shareToken, @RequestParam List<String> fileIds) {
-        String shareKey = "share:link:" + shareToken;
+        String shareKey = RedisKeyConstants.SHARE_LINK + shareToken;
         Map<String, String> shareMap = redisUtil.hgetAllAsString(shareKey);
         if (shareMap == null || shareMap.isEmpty()) {
             throw new BusinessException(StatusCode.NOT_FOUND_ERROR, "分享链接已过期或不存在");
@@ -225,7 +222,7 @@ public class FileController {
         if (downloadToken == null) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "令牌不能为空!");
         }
-        DownLoadInfoDTO downLoadInfoDTO = (DownLoadInfoDTO) redisUtil.get("tempDownload:" + downloadToken);
+        DownLoadInfoDTO downLoadInfoDTO = (DownLoadInfoDTO) redisUtil.get(RedisKeyConstants.TEMP_DOWNLOAD + downloadToken);
         if (downLoadInfoDTO == null) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "令牌已过期!");
         }
@@ -239,7 +236,7 @@ public class FileController {
         } else {
             fileService.downloadFileByIds(response, fileIds, userId);
         }
-        redisUtil.delete("tempDownload:" + downloadToken);
+        redisUtil.delete(RedisKeyConstants.TEMP_DOWNLOAD + downloadToken);
         //日志记录
         recordService.createRecordLog("下载照片", fileIds.size(), userId, request);
     }

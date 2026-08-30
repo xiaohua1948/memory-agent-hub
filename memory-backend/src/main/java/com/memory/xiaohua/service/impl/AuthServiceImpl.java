@@ -15,6 +15,7 @@ import com.memory.xiaohua.model.entity.UserStorage;
 import com.memory.xiaohua.model.vo.UserLoginVO;
 import com.memory.xiaohua.model.vo.UserVO;
 import com.memory.xiaohua.service.AuthService;
+import com.memory.xiaohua.utils.RedisKeyConstants;
 import com.memory.xiaohua.utils.auth.PasswordUtil;
 import com.memory.xiaohua.utils.auth.RedisUtil;
 import com.memory.xiaohua.utils.auth.SendEmailUtil;
@@ -68,7 +69,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         if (sendEmailUtil.validate(email)){
             throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱格式错误!");
         }
-        Object redisCode =  redisUtil.get("email:code:" + email);
+        Object redisCode =  redisUtil.get(RedisKeyConstants.EMAIL_CODE + email);
         if (redisCode == null){
             throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱验证码已过期!");
         }
@@ -99,7 +100,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         userStorage.setUserId(user.getUserId());
         userStorageMapper.insert(userStorage);
         // 2.1.1 修复：注册成功后删除验证码，防止 5 分钟内重复使用
-        redisUtil.delete("email:code:" + email);
+        redisUtil.delete(RedisKeyConstants.EMAIL_CODE + email);
         return res > 0;
     }
 
@@ -147,7 +148,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
             throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱格式错误!");
         }
         // 2.1.2 修复：发送频率限制，60 秒内同一邮箱只能请求一次
-        String lockKey = "email:lock:" + email;
+        String lockKey = RedisKeyConstants.EMAIL_LOCK + email;
         if (!redisUtil.setIfAbsent(lockKey, "1", 60, TimeUnit.SECONDS)) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "请求过于频繁，请稍后再试!");
         }
@@ -161,7 +162,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
             throw new BusinessException(StatusCode.SYSTEM_ERROR, "获取邮箱验证码失败!");
         }
         //验证码存入redis 有效期5min
-        redisUtil.set("email:code:" + email, emailCode, 5, TimeUnit.MINUTES);
+        redisUtil.set(RedisKeyConstants.EMAIL_CODE + email, emailCode, 5, TimeUnit.MINUTES);
         return emailCode;
     }
 
@@ -171,7 +172,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         String email = userAccountDTO.getEmail();
         String code = userAccountDTO.getCode();
         // 验证码过期时 get 返回 null，先判空避免 NPE
-        Object redisCodeObj = redisUtil.get("email:code:" + email);
+        Object redisCodeObj = redisUtil.get(RedisKeyConstants.EMAIL_CODE + email);
         if (redisCodeObj == null) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "验证码已过期!");
         }
@@ -180,7 +181,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
             throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱验证码错误!");
         }
         // 2.1.1 修复：验证码登录成功后删除验证码，防止重复使用
-        redisUtil.delete("email:code:" + email);
+        redisUtil.delete(RedisKeyConstants.EMAIL_CODE + email);
         // 2.查询
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("email", email);
@@ -248,7 +249,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         }
 
         // 2. 验证码校验（先判空，验证码过期时 get 返回 null，避免 NPE）
-        String redisKey = "email:code:" + newEmail;
+        String redisKey = RedisKeyConstants.EMAIL_CODE + newEmail;
         Object redisCodeObj = redisUtil.get(redisKey);
         if (redisCodeObj == null) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "验证码已过期!");

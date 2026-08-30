@@ -19,6 +19,7 @@ import com.memory.xiaohua.service.AlbumService;
 import com.memory.xiaohua.service.FileService;
 import com.memory.xiaohua.service.RecordService;
 import com.memory.xiaohua.service.UserService;
+import com.memory.xiaohua.utils.RedisKeyConstants;
 import com.memory.xiaohua.utils.auth.RedisUtil;
 import com.memory.xiaohua.utils.file.FileUtil;
 import com.memory.xiaohua.utils.file.MinioOSSUtil;
@@ -127,7 +128,7 @@ public class FileServiceImpl implements FileService {
         // 获取图片元数据
         ImageMetaData imageMetadata = new ImageMetaData();
         try {
-            imageMetadata = imageMetadataParserUtil.GetIMageMetadata(multipartFile);
+            imageMetadata = imageMetadataParserUtil.getImageMetadata(multipartFile);
         } catch (Exception e) {
             log.info(String.valueOf(e));
         }
@@ -141,7 +142,7 @@ public class FileServiceImpl implements FileService {
         //大于500kb进行压缩
         if (multipartFile.getSize() > 500 * 1000) {
             // 压缩图片
-            ByteArrayOutputStream thumbnailArrayOutputStream = fileUtil.outputQuality(fileBytes, fileMd5);
+            ByteArrayOutputStream thumbnailArrayOutputStream = fileUtil.outputQuality(fileBytes);
             byte[] thumbnailByteArray = thumbnailArrayOutputStream.toByteArray();
             thumbnailFileSize = thumbnailByteArray.length;
             thumbnailInputStream = new ByteArrayInputStream(thumbnailByteArray);
@@ -362,7 +363,7 @@ public class FileServiceImpl implements FileService {
         if (shareToken == null || shareToken.isBlank()) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "缺少分享凭证!");
         }
-        Map<String, String> shareMap = redisUtil.hgetAllAsString("share:link:" + shareToken);
+        Map<String, String> shareMap = redisUtil.hgetAllAsString(RedisKeyConstants.SHARE_LINK + shareToken);
         if (shareMap == null || shareMap.isEmpty()) {
             throw new BusinessException(StatusCode.NOT_FOUND_ERROR, "分享链接已过期或不存在");
         }
@@ -504,7 +505,7 @@ public class FileServiceImpl implements FileService {
         DownLoadInfoDTO downLoadInfoDTO = new DownLoadInfoDTO();
         downLoadInfoDTO.setFileIds(fileIds);
         downLoadInfoDTO.setUserId(userId);
-        redisUtil.set("tempDownload:" + Token, downLoadInfoDTO, 60, TimeUnit.MINUTES);
+        redisUtil.set(RedisKeyConstants.TEMP_DOWNLOAD + Token, downLoadInfoDTO, 60, TimeUnit.MINUTES);
         return Token;
     }
 
@@ -523,7 +524,7 @@ public class FileServiceImpl implements FileService {
         DownLoadInfoDTO downLoadInfoDTO = new DownLoadInfoDTO();
         downLoadInfoDTO.setAlbumId(albumId);
         downLoadInfoDTO.setUserId(userId);
-        redisUtil.set("tempDownload:" + Token, downLoadInfoDTO, 60, TimeUnit.MINUTES);
+        redisUtil.set(RedisKeyConstants.TEMP_DOWNLOAD + Token, downLoadInfoDTO, 60, TimeUnit.MINUTES);
         return Token;
     }
 
@@ -595,7 +596,7 @@ public class FileServiceImpl implements FileService {
 
         String shareKey = UUID.randomUUID().toString().replace("-", "");
         // 构造Redis存储数据
-        String redisKey = "share:link:" + shareKey;
+        String redisKey = RedisKeyConstants.SHARE_LINK + shareKey;
         Map<String, String> shareData = new HashMap<>();
         shareData.put("userId", userId.toString());
         shareData.put("fileIds", JSON.toJSONString(fileIds));
@@ -621,7 +622,7 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public ShareFileVO getShareInfo(String shareKey) {
-        shareKey = "share:link:" + shareKey;
+        shareKey = RedisKeyConstants.SHARE_LINK + shareKey;
         // 2.6 修复：先判空再取 expire（原顺序反了，过期时 getExpire 返回负数，localDateTime 计算无意义）
         Map<String, String> shareMap = redisUtil.hgetAllAsString(shareKey);
         if (shareMap == null || shareMap.isEmpty()) {

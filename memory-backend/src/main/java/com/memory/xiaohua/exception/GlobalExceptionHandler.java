@@ -5,12 +5,17 @@ import cn.dev33.satoken.exception.NotPermissionException;
 import cn.dev33.satoken.exception.NotRoleException;
 import com.memory.xiaohua.common.BaseResponse;
 import com.memory.xiaohua.common.ResultUtil;
+import com.memory.xiaohua.exception.StatusCode;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 /**
  * 全局异常处理器
@@ -49,5 +54,38 @@ public class GlobalExceptionHandler {
     public BaseResponse<?> businessExceptionHandler(RuntimeException e) {
         log.error("RuntimeException", e);
         return ResultUtil.error(StatusCode.SYSTEM_ERROR,"系统错误");
+    }
+
+    // #23 修复：参数校验失败（@Valid DTO）统一返回 400 而非 500
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public BaseResponse<?> handleMethodArgumentNotValid(MethodArgumentNotValidException e) {
+        String msg = e.getBindingResult().getFieldErrors().stream()
+                .map(err -> err.getField() + ": " + err.getDefaultMessage())
+                .findFirst().orElse("参数校验失败");
+        log.warn("MethodArgumentNotValid: {}", msg);
+        return ResultUtil.error(StatusCode.PARAMS_ERROR, msg);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public BaseResponse<?> handleConstraintViolation(ConstraintViolationException e) {
+        log.warn("ConstraintViolation: {}", e.getMessage());
+        return ResultUtil.error(StatusCode.PARAMS_ERROR, "参数校验失败: " + e.getMessage());
+    }
+
+    // #23 修复：文件上传超限友好提示
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public BaseResponse<?> handleMaxUploadSize(MaxUploadSizeExceededException e) {
+        log.warn("MaxUploadSizeExceeded: {}", e.getMessage());
+        return ResultUtil.error(StatusCode.PARAMS_ERROR, "上传文件超过大小限制!");
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public BaseResponse<?> handleHttpMessageNotReadable(HttpMessageNotReadableException e) {
+        log.warn("HttpMessageNotReadable: {}", e.getMessage());
+        return ResultUtil.error(StatusCode.PARAMS_ERROR, "请求体格式错误!");
     }
 }

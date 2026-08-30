@@ -1,6 +1,7 @@
 package com.memory.xiaohua.utils.picture;
 
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.opencv.core.*;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
@@ -27,6 +28,7 @@ import java.util.stream.Stream;
  * @author: xiaohua
  * @date: 2025/3/7,13:20
  */
+@Slf4j
 @Component
 public class OpenCVPictureUtil {
     @Value("${opencv.native.dll-path}")
@@ -111,7 +113,7 @@ public class OpenCVPictureUtil {
             Mat image = Imgcodecs.imdecode(matOfByte, Imgcodecs.IMREAD_COLOR);
 
             if (image.empty()) {
-                System.err.println("[ERROR] 无法解码图像数据");
+                log.error("[ERROR] 无法解码图像数据");
                 return null;
             }
 
@@ -122,7 +124,7 @@ public class OpenCVPictureUtil {
                     MIN_NEIGHBORS, 0, MIN_SIZE, new Size());
             // 3. 检测结果校验（参考网页7）
             if (faceDetections.empty()) {
-                System.out.println("[INFO] 未检测到人脸");
+                log.info("[INFO] 未检测到人脸");
                 return null;
             }
             // 4. 提取最大人脸（参考网页3）
@@ -141,7 +143,7 @@ public class OpenCVPictureUtil {
             }
             return matToBytes(resized);
         } catch (Exception e) {
-            System.err.println("[EXCEPTION] 处理失败: " + e.getMessage());
+            log.error("[EXCEPTION] 处理失败: {}", e.getMessage(), e);
         }
         return null;
     }

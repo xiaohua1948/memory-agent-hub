@@ -15,13 +15,14 @@ import org.springframework.stereotype.Service;
 import java.util.Date;
 import java.util.List;
 
-import static cn.dev33.satoken.SaManager.log;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * @description:
  * @author: xiaohua
  * @date: 2025/3/7,22:38
  */
+@Slf4j
 @Service
 public class LocationServiceImpl implements LocationService {
     @Resource
@@ -80,7 +81,7 @@ public class LocationServiceImpl implements LocationService {
                 log.info("更新文件 {} 的地址：{}", file.getFileId(), regeocode.getFormattedAddress());
             }
         } catch (GeocoderLocationUtil.GeocodingException e) {
-            System.err.println("地理编码失败:文件ID:" +file.getFileId()+ e.getMessage());
+            log.warn("地理编码失败: 文件ID={}", file.getFileId(), e);
 
         }
     }

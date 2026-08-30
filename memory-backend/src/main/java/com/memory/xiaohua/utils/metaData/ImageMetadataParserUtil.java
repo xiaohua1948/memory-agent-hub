@@ -6,6 +6,7 @@ import com.drew.metadata.Directory;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.Tag;
 import com.memory.xiaohua.model.entity.ImageMetaData;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -19,13 +20,11 @@ import java.time.format.DateTimeFormatter;
  * @author: xiaohua
  * @date: 2025/2/19,21:14
  */
+@Slf4j
 @Component
 public class ImageMetadataParserUtil {
 
-    public static void main(String[] args) throws ImageProcessingException, IOException {
-        ImageMetaData imageMetaData = GetIMageMetadata(new File("F://downloads//1.png"));
-        System.out.println(imageMetaData);
-    }
+    // #19 修复：删除调试 main 方法（含本地硬编码路径）
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss");
 
     /**
@@ -33,7 +32,7 @@ public class ImageMetadataParserUtil {
      * @Author: xiaohua
      * @Date: 2025/2/5,20:04:42
      */
-    public ImageMetaData GetIMageMetadata(MultipartFile file) throws IOException, ImageProcessingException {
+    public ImageMetaData getImageMetadata(MultipartFile file) throws IOException, ImageProcessingException {
         Metadata metadata;
         metadata = ImageMetadataReader.readMetadata(file.getInputStream());
         ImageMetaData imageMetadata = new ImageMetaData();
@@ -46,14 +45,14 @@ public class ImageMetadataParserUtil {
                  mapTagToField(imageMetadata, tagName, description);
              }
              catch (Exception e){
-                 System.err.println("元数据异常"+e);
+                 log.warn("元数据解析异常 tag={}", tagName, e);
              }
 
             }
         }
         return imageMetadata;
     }
-    public static ImageMetaData GetIMageMetadata(File file) throws IOException, ImageProcessingException {
+    public static ImageMetaData getImageMetadata(File file) throws IOException, ImageProcessingException {
         Metadata metadata;
         FileInputStream fileInputStream = new FileInputStream(file);
         byte[] bytes = fileInputStream.readAllBytes();

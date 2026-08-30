@@ -42,7 +42,7 @@ public class Face implements Serializable {
     @TableField("is_processed")
     private Boolean isProcessed;
 
-    //("128维特征向量(BLOB存储float数组)")
+    // 人脸裁剪图字节（实际存储的是 OpenCV 裁剪出的人脸 PNG 字节，并非特征向量）
     @TableField("feature_vector")
     private byte[] featureVector;
 

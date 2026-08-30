@@ -17,6 +17,7 @@ import com.memory.xiaohua.model.vo.album.ModelAlbumVO;
 import com.memory.xiaohua.service.AlbumService;
 import com.memory.xiaohua.service.FileService;
 import com.memory.xiaohua.service.RecordService;
+import com.memory.xiaohua.utils.RedisKeyConstants;
 import com.memory.xiaohua.utils.auth.RedisUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.annotation.Resource;
@@ -282,7 +283,7 @@ public class AlbumController {
     @GetMapping("/downloadAlbumByToken")
     public void downloadAlbumByToken(HttpServletRequest request,HttpServletResponse response, String downloadToken) {
 
-        DownLoadInfoDTO downLoadInfoDTO = (DownLoadInfoDTO) redisUtil.get("tempDownload:"+downloadToken);
+        DownLoadInfoDTO downLoadInfoDTO = (DownLoadInfoDTO) redisUtil.get(RedisKeyConstants.TEMP_DOWNLOAD + downloadToken);
 
         if (downloadToken == null){
             throw new BusinessException(StatusCode.PARAMS_ERROR, "令牌已过期!");
@@ -290,7 +291,7 @@ public class AlbumController {
         Long albumId = downLoadInfoDTO.getAlbumId();
         Long userId = downLoadInfoDTO.getUserId();
         fileService.downloadAlbumByToken(request,response,albumId,userId);
-        redisUtil.delete("tempDownload:"+downloadToken);
+        redisUtil.delete(RedisKeyConstants.TEMP_DOWNLOAD + downloadToken);
     }
 
 

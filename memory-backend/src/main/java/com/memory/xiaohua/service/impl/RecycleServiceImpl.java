@@ -35,7 +35,6 @@ public class RecycleServiceImpl implements RecycleService {
         Page<FileInfoListVO> page = new Page<>(current, size);
         List<FileInfoListVO> fileInfoListVOS = fileMapper.getFileInfoList(page, orderType, orderKeyword, imageTypeText, null, null, userId, null, true);
         page.setRecords(fileInfoListVOS);
-        System.out.println(fileInfoListVOS);
         return page;
     }
 

@@ -9,7 +9,7 @@ import com.memory.xiaohua.model.vo.UserLoginVO;
 import com.memory.xiaohua.service.AuthService;
 import com.memory.xiaohua.utils.auth.RedisUtil;
 import com.memory.xiaohua.utils.auth.SendEmailUtil;
-import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,13 +23,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/auth")
 public class AuthController {
 
-    @Autowired
+    @Resource
     private SendEmailUtil sendEmailUtil;
 
-    @Autowired
+    @Resource
     private AuthService authService;
 
-    @Autowired
+    @Resource
     private RedisUtil redisUtil;
 
 

@@ -44,7 +44,7 @@ public class FileUtil {
     }
 
     /**
-     * 创建分辨率为640x480的略缩图，并在此基础上，保留原始图像的纵横比
+     * 生成 300x300 的缩略图，保留原始图像纵横比
      */
     public static void formatResolution(File source,File target)  {
         try {
@@ -81,9 +81,9 @@ public class FileUtil {
         }
     }
     /**
-     *  保持原始分辨率，减低图片质量
+     * 按比例缩小并降低图片质量生成缩略图
      */
-    public  ByteArrayOutputStream outputQuality(byte[] source,String fileName)  {
+    public  ByteArrayOutputStream outputQuality(byte[] source)  {
         ByteArrayOutputStream thumbOutput = new ByteArrayOutputStream();
         try {
             Thumbnails

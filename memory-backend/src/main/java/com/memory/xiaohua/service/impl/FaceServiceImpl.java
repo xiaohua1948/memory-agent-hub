@@ -16,6 +16,7 @@ import com.memory.xiaohua.service.FaceService;
 import com.memory.xiaohua.utils.file.MinioOSSUtil;
 import com.memory.xiaohua.utils.picture.OpenCVPictureUtil;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +35,7 @@ import java.util.UUID;
  * @since 2025-03-07
  */
 @Service
+@Slf4j
 public class FaceServiceImpl extends ServiceImpl<FaceMapper, Face> implements FaceService {
 
     @Resource
@@ -70,7 +72,7 @@ public class FaceServiceImpl extends ServiceImpl<FaceMapper, Face> implements Fa
             try {
                 processOneFace(face);
             } catch (Exception e) {
-                log.error("处理失败:faceId=" + face.getFaceId() + e.getMessage());
+                log.error("处理人脸失败: faceId={}", face.getFaceId(), e);
             }
         }
 
@@ -85,7 +87,7 @@ public class FaceServiceImpl extends ServiceImpl<FaceMapper, Face> implements Fa
         Long userId = face.getUserId();
         String fileId = face.getFileId();
         //人脸数据未处理
-        System.err.println("处理faceId："+face.getFaceId()+"对应的文件fileId:+"+face.getFileId());
+        log.info("处理人脸: faceId={}, fileId={}", face.getFaceId(), face.getFileId());
         FileEntity fileEntity = fileMapper.selectById(fileId);
         String thumbnailObjectName = fileEntity.getThumbnailObjectName();
         byte[] fileBytes = minioOSSUtil.getFileBytes(thumbnailObjectName);
@@ -150,7 +152,7 @@ public class FaceServiceImpl extends ServiceImpl<FaceMapper, Face> implements Fa
                 }
             }
             if (personList.isEmpty() || personList.size() == count) {
-                System.err.println("匹配失败创建新人物");
+                log.info("匹配失败，创建新人物: userId={}", userId);
                 //没有匹配的人物，创建人物;
                 Person person = new Person();
                 person.setUserId(userId);
