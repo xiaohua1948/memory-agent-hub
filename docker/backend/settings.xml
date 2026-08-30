@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven settings using Aliyun mirror (fast in China).
+  Mounted into the build container by docker/backend/Dockerfile.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <mirrors>
+    <!-- Huawei Cloud mirror: replaces Maven Central (faster & more complete
+         than Aliyun for bytedeco artifacts) -->
+    <mirror>
+      <id>huawei-central</id>
+      <name>Huawei Cloud Repository</name>
+      <url>https://repo.huaweicloud.com/repository/maven/</url>
+      <mirrorOf>central</mirrorOf>
+    </mirror>
+  </mirrors>
+
+  <profiles>
+    <profile>
+      <id>cn-repos</id>
+      <repositories>
+        <repository>
+          <id>huawei-central</id>
+          <url>https://repo.huaweicloud.com/repository/maven/</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>huawei-plugin</id>
+          <url>https://repo.huaweicloud.com/repository/maven/</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+
+  <activeProfiles>
+    <activeProfile>cn-repos</activeProfile>
+  </activeProfiles>
+</settings>

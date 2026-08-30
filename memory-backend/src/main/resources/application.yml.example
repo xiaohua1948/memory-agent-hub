@@ -1,0 +1,100 @@
+server:
+  port: 8088
+spring:
+  servlet:
+    multipart:
+      max-file-size: 10000MB
+      max-request-size: 10000MB
+      enabled: true
+  application:
+    name: memory-backend
+  #mysql配置
+  datasource:
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      url: ${MYSQL_URL:jdbc:mysql://localhost:3306/memory_space}
+      username: ${MYSQL_USERNAME:root}
+      password: ${MYSQL_PASSWORD:123456}
+  #redis配置
+  data:
+      redis:
+        host: ${REDIS_HOST:localhost}
+        port: ${REDIS_PORT:6379}
+        password: ${REDIS_PASSWORD:123456}
+        database: 0
+  #邮箱配置
+  mail:
+      host: smtp.qq.com
+      port: 465
+      username: your-qq-email@qq.com
+      password: YOUR_EMAIL_AUTH_CODE
+      default-encoding: utf-8
+      protocol: smtps
+      code:
+        time: 300
+#mybatis-plus配置
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+      logic-delete-field: deleted
+      logic-not-delete-value: 0
+      logic-delete-value: 1
+    banner: false
+  mapper-locations: classpath:/mapper/*.xml
+#sa-token配置
+sa-token:
+    token-name: Authorization
+    timeout: 2592000
+    active-timeout: -1
+    is-concurrent: false
+    is-share: true
+    token-style: uuid
+    is-log: true
+    is-read-cookie: false
+    jwt-secret-key: xiaohua
+    is-read-header: true
+#minio oss配置
+minio:
+  access-key: ${MINIO_ACCESS_KEY:CHANGE_MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY:CHANGE_MINIO_SECRET_KEY}
+  url: ${MINIO_URL:http://127.0.0.1:9000}
+  bucket-name: ${MINIO_BUCKET_NAME:pictures}
+  # 浏览器可访问的 MinIO 地址（用于替换预签名URL中的endpoint），Docker 部署时配置，如 http://127.0.0.1:9002
+  public-url: ${MINIO_PUBLIC_URL:}
+#阿里OSS配置
+aliyun:
+  oss:
+    endpoint: oss-cn-beijing.aliyuncs.com
+    accessKeyId: YOUR_ALIYUN_ACCESS_KEY_ID
+    accessKeySecret: YOUR_ALIYUN_ACCESS_KEY_SECRET
+    bucketName: memory-pictures
+springdoc:
+    api-docs:
+      enabled: true
+    swagger-ui:
+      path: /swagger-ui.html
+      enabled: true
+# 高德API_KEY
+amp:
+  api:
+    key: YOUR_AMAP_API_KEY
+  geo:
+    url: https://restapi.amap.com/v3/geocode/regeo
+#opencv训练的数据模型
+opencv:
+  native:
+    dll-path: "opencv/lib/x64/opencv_java455.dll"
+    haar-model: "opencv/haarcascades/haarcascade_frontalface_alt2.xml"
+    linux-dll-path: ${OPENCV_LINUX_DLL_PATH:}
+huawei:
+  cloud:
+    image:
+      ak: YOUR_HUAWEI_CLOUD_AK
+      sk: YOUR_HUAWEI_CLOUD_SK
+      region: cn-north-4
+      endpoint: image.cn-north-4.myhuaweicloud.com
+      threshold: 10
+      language: zh

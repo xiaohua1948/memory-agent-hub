@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.memory.xiaohua.mapper.UserFileMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.memory.xiaohua.model.entity.UserFileEntity">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="file_id" property="fileId"/>
+        <result column="is_deleted" property="isDeleted"/>
+        <result column="upload_time" property="uploadTime"/>
+        <result column="deleted_time" property="deletedTime"/>
+        <result column="updated_time" property="updatedTime"/>
+    </resultMap>
+
+    <update id="updateUseFile">
+        UPDATE user_file
+        SET is_deleted = #{isDeleted}
+        WHERE user_id = #{userId}
+        AND file_id IN
+        <foreach collection="fileIds" item="fileId" open="(" separator="," close=")">
+            #{fileId}
+        </foreach>
+    </update>
+
+    <delete id="dropFile">
+        DELETE  from user_file
+        where user_id = #{userId}
+        AND is_deleted = 1
+        <if test="fileIds != null and fileIds.size() > 0">
+            AND file_id IN
+            <foreach collection="fileIds" item="fileId"
+                     open="(" separator="," close=")">
+                #{fileId}
+            </foreach>
+        </if>
+        <!-- 空集合时添加永假条件避免全表删除 -->
+        <if test="fileIds == null or fileIds.size() == 0">
+            AND 1=0
+        </if>
+    </delete>
+
+    <delete id="dropAllFile">
+        DELETE from user_file
+        where
+        is_deleted = 1
+        <if test="fileIds != null and fileIds.size() > 0">
+            AND file_id IN
+            <foreach collection="fileIds" item="fileId"
+                     open="(" separator="," close=")">
+                #{fileId}
+            </foreach>
+        </if>
+        <!-- 空集合时添加永假条件避免全表删除 -->
+        <if test="fileIds == null or fileIds.size() == 0">
+            AND 1=0
+        </if>
+    </delete>
+
+
+</mapper>

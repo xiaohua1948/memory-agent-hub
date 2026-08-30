@@ -1,0 +1,44 @@
+# =============================================================
+# Memory Agent Hub - Git 忽略规则
+# =============================================================
+
+# ---------- 密钥 / 环境配置（含真实凭据，不入库） ----------
+docker/.env
+memory-backend/src/main/resources/application.yml
+# 提交脱敏模板代替：
+#   docker/.env.example
+#   memory-backend/src/main/resources/application.yml.example
+
+# ---------- Docker 持久化数据（体积大且含隐私，不入库） ----------
+docker/data/
+
+# ---------- 构建产物 ----------
+memory-backend/target/
+memory-frontend/dist/
+memory-frontend-admin/dist/
+memory-frontend/node_modules/
+memory-frontend-admin/node_modules/
+memory-backend/src/main/resources/tmp/
+
+# ---------- 前端依赖 ----------
+**/node_modules/
+**/dist/
+
+# ---------- IDE / 编辑器 ----------
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+
+# ---------- 操作系统 / 临时文件 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
+*~
+
+# ---------- Maven 本地仓库（若在项目内，一般不会） ----------
+.m2/

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.memory.xiaohua.mapper.FaceMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.memory.xiaohua.model.entity.Face">
+        <id column="face_id" property="faceId" />
+        <result column="user_id" property="userId" />
+        <result column="file_id" property="fileId" />
+        <result column="is_processed" property="isProcessed" />
+        <result column="feature_vector" property="featureVector" />
+        <result column="person_cover_url" property="personCoverUrl" />
+        <result column="person_object_name" property="personObjectName" />
+        <result column="create_time" property="createTime" />
+        <result column="is_face" property="isFace" />
+    </resultMap>
+
+
+    <!--    根据文件id查询-->
+    <select id="selectFaceIdByFileIds"  resultType="java.lang.Long">
+        select face_id from face where user_id=#{userId} and file_id
+        in
+        <foreach item="id" collection="fileIds" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+
+    </select>
+
+</mapper>

@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.memory.xiaohua.mapper.PersonMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.memory.xiaohua.model.entity.Person">
+        <id column="person_id" property="personId"/>
+        <result column="user_id" property="userId"/>
+        <result column="person_name" property="personName"/>
+        <result column="person_relation" property="personRelation"/>
+        <result column="create_time" property="createTime"/>
+        <result column="display" property="display"/>
+    </resultMap>
+    <!--    根据id查询人物-->
+    <select id="selectPersonById" resultType="com.memory.xiaohua.model.vo.album.PersonAlbumVO">
+        SELECT
+        p.person_id AS personId,
+        p.person_name AS personName,
+        p.person_relation AS personRelation,
+        tmp.coverUrl,
+        tmp.faceId,
+        COUNT(DISTINCT f.face_id) AS total,
+        MAX(f.create_time) AS createTime
+        FROM person p
+        <!-- 使用窗口函数优化封面图查询 -->
+        LEFT JOIN (
+        SELECT
+        pf.person_id,
+        f.person_cover_url AS coverUrl,
+        f.face_id AS faceId,
+        ROW_NUMBER() OVER(
+        PARTITION BY pf.person_id
+        ORDER BY pf.representative DESC, pf.update_time DESC
+        ) AS rn
+        FROM person_face pf
+        INNER JOIN face f ON pf.face_id = f.face_id
+        WHERE f.is_processed = 1
+        AND f.is_face = 1
+        ) tmp ON p.person_id = tmp.person_id AND tmp.rn = 1
+        <!-- 精准关联统计字段 -->
+        INNER JOIN person_face pf_main ON p.person_id = pf_main.person_id
+        INNER JOIN face f ON pf_main.face_id = f.face_id
+        AND f.is_processed = 1
+        AND f.is_face = 1
+        WHERE p.person_id = #{personId}
+        AND p.user_id = #{userId}
+        AND p.display = 1
+        GROUP BY p.person_id, tmp.coverUrl, tmp.faceId
+        ORDER BY createTime DESC
+    </select>
+    <select id="selectAllPersonAlbum" resultType="com.memory.xiaohua.model.vo.album.PersonAlbumVO">
+        SELECT
+        person_id AS personId,
+        person_name AS personName,
+        person_relation AS personRelation,
+        coverUrl,
+        faceId,
+        total,
+        createTime
+        FROM (
+        SELECT
+        p.person_id,
+        p.person_name,
+        p.person_relation,
+        f.person_cover_url AS coverUrl,
+        f.face_id AS faceId,
+        COUNT(DISTINCT f.face_id) AS total,
+        MAX(f.create_time) AS createTime,
+        <!-- 窗口函数实现优先级排序 -->
+        ROW_NUMBER() OVER(
+        PARTITION BY p.person_id
+        ORDER BY pf.representative DESC, pf.update_time DESC
+        ) AS rn
+        FROM person p
+        INNER JOIN person_face pf ON p.person_id = pf.person_id
+        INNER JOIN face f ON pf.face_id = f.face_id
+        WHERE pf.user_id = #{userId}
+        AND f.is_processed = 1
+        AND f.is_face = 1
+        AND p.display = #{display}
+        GROUP BY p.person_id, f.face_id, pf.representative,pf.update_time
+        ) tmp
+        WHERE rn = 1  <!-- 取最高优先级的封面 -->
+        ORDER BY createTime DESC
+    </select>
+
+
+    <update id="hiddenPerson">
+        UPDATE person
+        SET display = 0
+        WHERE user_id = #{userId}
+        AND person_id IN
+        <foreach item="id" collection="personIds" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <update id="updatePersonFaces">
+        UPDATE person_face pf
+        set person_id = #{representativeId}
+        where user_id=#{userId} and person_id IN
+        <foreach item="id" collection="mergePersonIds" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+    <!--    根据人物id删除-->
+    <delete id="deletePersonById">
+        DELETE FROM person
+        WHERE user_id = #{userId} AND person_id IN
+        <foreach item="id" collection="mergePersonIds" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+
+    </delete>
+
+    <delete id="deletePersonFacesByFaceId">
+        DELETE FROM person_face
+        WHERE user_id = #{userId} AND person_id = #{personId}
+        AND face_id IN
+        <foreach item="id" collection="faceIds" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+
+</mapper>

@@ -1,0 +1,22 @@
+# Git
+.git
+.gitignore
+
+# 构建产物
+**/node_modules
+**/dist
+**/target
+**/.idea
+**/.vscode
+**/*.iml
+
+# Docker 部署数据（挂载卷）
+docker/data
+
+# 迁移临时文件
+docker/migrate/*.sql
+docker/migrate/*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db

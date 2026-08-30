@@ -1,0 +1,465 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.memory.xiaohua.mapper.FileMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.memory.xiaohua.model.entity.FileEntity">
+        <id column="file_id" property="fileId"/>
+
+        <!-- 基础信息 -->
+        <result column="origin_file_name" property="originFileName"/>
+        <result column="size" property="size"/>
+        <result column="last_modified_time" property="lastModifiedTime"/>
+        <result column="content_type" property="contentType"/>
+        <result column="category" property="category"/>
+        <result column="file_url" property="fileUrl"/>
+        <result column="thumbnail_url" property="thumbnailUrl"/>
+
+        <result column="md5" property="md5"/>
+        <result column="location" property="location"/>
+
+        <!-- 元数据字段 -->
+        <result column="date_time_original" property="dateTimeOriginal"/>
+        <result column="width" property="width"/>
+        <result column="height" property="height"/>
+        <result column="make" property="make"/>
+        <result column="model" property="model"/>
+
+        <!-- GPS信息 -->
+        <result column="latitude" property="latitude"/>
+        <result column="latitude_ref" property="latitudeRef"/>
+        <result column="longitude" property="longitude"/>
+        <result column="longitude_ref" property="longitudeRef"/>
+    </resultMap>
+    <resultMap id="fileInfoVOResultMap" type="com.memory.xiaohua.model.vo.entity.FileInfo">
+        <id property="fileId" column="file_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="originFileName" column="origin_file_name"/>
+        <result property="size" column="size"/>
+        <result column="width" property="width"/>
+        <result column="height" property="height"/>
+        <result property="contentType" column="content_type"/>
+        <result property="category" column="category"/>
+        <result property="duration" column="duration"/>
+        <result property="fileUrl" column="file_url"/>
+        <result property="thumbnailUrl" column="thumbnail_url"/>
+        <result property="thumbnailObjectName" column="thumbnail_object_name"/>
+    </resultMap>
+
+    <resultMap id="fileInfoListVOResultMap" type="com.memory.xiaohua.model.vo.FileInfoListVO">
+        <result property="time" column="group_date"/>
+        <collection
+                property="fileList"
+                ofType="com.memory.xiaohua.model.vo.entity.FileInfo"
+                resultMap="fileInfoVOResultMap"/>
+    </resultMap>
+
+    <resultMap id="similarFileListVOResultMap" type="com.memory.xiaohua.model.vo.SimilarFileInfoListVO">
+        <result property="similarId" column="similar_id"/>
+        <collection
+                property="fileList"
+                ofType="com.memory.xiaohua.model.vo.entity.FileInfo"
+                resultMap="fileInfoVOResultMap"/>
+    </resultMap>
+
+
+    <select id="getFileInfoList" resultMap="fileInfoListVOResultMap">
+        SELECT file.*,
+        DATE(${orderKeyword}) AS group_date,
+        video_meta_data.duration AS duration
+        FROM file
+        JOIN user_file uf on file.file_id = uf.file_id
+        LEFT JOIN location l on file.file_id = l.file_id
+        LEFT JOIN album_picture ap ON file.file_id = ap.file_id
+        LEFT JOIN video_meta_data ON file.file_id = video_meta_data.file_id
+
+        <where>
+
+            uf.is_deleted = #{isDeleted}
+            AND uf.user_id = #{userId}
+
+            <if test="albumId != null">
+                AND ap.album_id = #{albumId}
+            </if>
+            <if test="locationLevel != null">
+                <choose>
+                    <when test="locationLevel == 'country'">
+                        AND country = #{locationValue}
+                    </when>
+                    <when test="locationLevel == 'province'">
+                        AND province = #{locationValue}
+                    </when>
+                    <when test="locationLevel == 'city'">
+                        AND city = #{locationValue}
+                    </when>
+                    <when test="locationLevel == 'district'">
+                        AND district = #{locationValue}
+                    </when>
+                    <otherwise>
+                        <!-- 默认逻辑 -->
+                    </otherwise>
+                </choose>
+            </if>
+            <choose>
+                <when test="imageTypeText == 'picture'">
+                    AND file.category = 'image'
+                    AND file.content_type != 'image/gif'
+                </when>
+                <when test="imageTypeText == 'gif'">
+                    AND file.content_type = 'image/gif'
+                </when>
+                <when test="imageTypeText == 'video'">
+                    AND file.category = 'video'
+                </when>
+
+            </choose>
+        </where>
+        GROUP BY uf.user_id, file.file_id, group_date
+        ORDER BY ${orderKeyword}
+        <choose>
+            <when test="orderType == 'asc' or orderType == 'desc'">
+                ${orderType}
+            </when>
+            <otherwise>
+                DESC
+            </otherwise>
+        </choose>
+    </select>
+
+    <select id="selectAllFileByUserId" resultMap="fileInfoVOResultMap">
+        SELECT distinct file.*
+        FROM file
+                 JOIN user_file uf on file.file_id = uf.file_id
+                 LEFT JOIN video_meta_data ON file.file_id = video_meta_data.file_id
+        where uf.user_id = #{userId}
+          and uf.is_deleted = 0
+
+        ORDER BY file.date_time_original
+                DESC
+        limit ${size}
+    </select>
+
+    <select id="selectAllSimilarPicture" resultMap="similarFileListVOResultMap">
+        SELECT
+        similar_id,
+        file.*,
+        video_meta_data.duration AS duration
+        FROM file
+        JOIN user_file uf ON file.file_id = uf.file_id
+        JOIN similar_picture sp ON file.file_id = sp.file_id
+        LEFT JOIN video_meta_data ON file.file_id = video_meta_data.file_id
+        <where>
+            uf.is_deleted = 0
+            AND sp.user_id = #{userId}
+            <choose>
+                <when test="imageTypeText == 'picture'">
+                    AND file.category = 'image'
+                    AND file.content_type != 'image/gif'
+                </when>
+                <when test="imageTypeText == 'gif'">
+                    AND file.content_type = 'image/gif'
+                </when>
+                <when test="imageTypeText == 'video'">
+                    AND file.category = 'video'
+                </when>
+            </choose>
+        </where>
+        GROUP BY similar_id, file.file_id,sp.user_id
+    </select>
+
+
+
+
+    <select id="getTagFileInfo" resultMap="fileInfoListVOResultMap">
+        SELECT
+        file.*,
+        DATE(${orderKeyword}) AS group_date,
+        video_meta_data.duration AS duration
+        FROM file
+        INNER JOIN user_file uf ON file.file_id = uf.file_id
+        INNER JOIN picture_tag pt ON file.file_id = pt.file_id
+        LEFT JOIN video_meta_data ON file.file_id = video_meta_data.file_id
+
+        <!-- 动态 WHERE 条件 -->
+        <where>
+            <!-- 基本条件 -->
+            uf.is_deleted = #{isDeleted}
+            AND uf.user_id = #{userId}
+            <if test="tagName != null ">
+                AND pt.tag_name = #{tagName}
+            </if>
+            <!-- 文件类型条件 -->
+            <choose>
+                <when test="imageTypeText == 'picture'">
+                    AND file.category = 'image'
+                    AND file.content_type != 'image/gif'
+                </when>
+                <when test="imageTypeText == 'gif'">
+                    AND file.content_type = 'image/gif'
+                </when>
+                <when test="imageTypeText == 'video'">
+                    AND file.category = 'video'
+                </when>
+            </choose>
+        </where>
+
+        <!-- 分组 -->
+        <choose>
+            <when test="orderKeyword != null and orderKeyword != ''">
+                GROUP BY uf.user_id, file.file_id, group_date
+            </when>
+            <otherwise>
+                GROUP BY uf.user_id, file.file_id
+            </otherwise>
+        </choose>
+
+        <!-- 排序 -->
+        ORDER BY
+        <choose>
+            <when test="orderType != null and orderType in ('asc', 'desc')">
+                ${orderKeyword} ${orderType}
+            </when>
+            <otherwise>
+                ${orderKeyword} DESC
+            </otherwise>
+        </choose>
+    </select>
+
+
+    <select id="selectFileInfoListByIds" resultMap="fileInfoListVOResultMap">
+        SELECT file.*,
+        DATE(file.last_modified_time) AS group_date,
+        video_meta_data.duration AS duration
+        FROM file
+        JOIN user_file uf on file.file_id = uf.file_id
+        LEFT JOIN location l on file.file_id = l.file_id
+        LEFT JOIN album_picture ap ON file.file_id = ap.file_id
+        LEFT JOIN video_meta_data ON file.file_id = video_meta_data.file_id
+        <where>
+            file.file_id in
+            <foreach collection="fileIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+
+        </where>
+        GROUP BY file.file_id, DATE(file.last_modified_time)
+
+
+    </select>
+
+
+    <!--    通过相册id逻辑删除  -->
+    <update id="setIsDeletedByAlbumIds">
+        UPDATE user_file uf
+        JOIN album_picture ap ON uf.file_id = ap.file_id
+        SET uf.is_deleted = 1,uf.deleted_time = now()
+        WHERE ap.album_id IN
+        <foreach item="id" collection="albumIds" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        and uf.is_deleted = 0
+    </update>
+    <update id="setIsDeletedByFileIds">
+        UPDATE user_file
+        SET
+        is_deleted = #{isDeleted},
+        deleted_time = now()
+        WHERE file_id IN
+        <foreach collection="fileIds" item="fileId" open="(" separator="," close=")">
+            #{fileId}
+        </foreach>
+        AND is_deleted =
+        <choose>
+            <when test="isDeleted">0</when>
+            <otherwise>1</otherwise>
+        </choose>
+        and user_id = #{userId}
+    </update>
+
+
+    <!-- 在mapper XML文件中 -->
+    <select id="selectFileByIds" resultMap="BaseResultMap">
+        SELECT
+        f.*
+        FROM file f
+        INNER JOIN user_file uf ON f.file_id = uf.file_id
+        WHERE uf.user_id = #{userId}
+        AND f.file_id IN
+        <foreach collection="fileIds" item="fileId"
+                 open="(" separator="," close=")">
+            #{fileId}
+        </foreach>
+    </select>
+
+
+    <resultMap id="FileMetaDataVOMap" type="com.memory.xiaohua.model.vo.entity.FileMetaDataVO">
+        <!-- 文件基础信息映射 -->
+        <association property="fileInfo" resultMap="fileMap"/>
+        <!-- 图片元数据映射 -->
+        <association property="imageMetaData" resultMap="imageMetaDataMap"/>
+        <!-- 视频元数据映射 -->
+        <association property="videoMetaData" resultMap="videoMetaDataMap"/>
+    </resultMap>
+
+    <!-- 文件表映射 -->
+    <resultMap id="fileMap" type="com.memory.xiaohua.model.entity.FileEntity">
+        <id column="file_id" property="fileId"/>
+        <result column="origin_file_name" property="originFileName"/>
+        <result column="size" property="size"/>
+
+        <result column="upload_time" property="uploadTime"/>
+        <result column="last_modified_time" property="lastModifiedTime"/>
+        <result column="content_type" property="contentType"/>
+        <result column="category" property="category"/>
+        <result column="file_url" property="fileUrl"/>
+        <result column="thumbnail_url" property="thumbnailUrl"/>
+        <result column="object_name" property="objectName"/>
+        <result column="md5" property="md5"/>
+        <result column="location" property="location"/>
+        <result column="width" property="width"/>
+        <result column="height" property="height"/>
+        <result column="make" property="make"/>
+        <result column="model" property="model"/>
+        <result column="date_time_original" property="dateTimeOriginal"/>
+        <result column="latitude" property="latitude"/>
+        <result column="latitude_ref" property="latitudeRef"/>
+        <result column="longitude" property="longitude"/>
+        <result column="longitude_ref" property="longitudeRef"/>
+    </resultMap>
+
+    <!-- 图片元数据表映射 -->
+    <resultMap id="imageMetaDataMap" type="com.memory.xiaohua.model.entity.ImageMetaData">
+        <id column="img_file_id" property="fileId"/>
+        <result column="software" property="software"/>
+        <result column="exposure_program" property="exposureProgram"/>
+        <result column="exposure_time" property="exposureTime"/>
+        <result column="f_number" property="fNumber"/>
+        <result column="iso" property="iso"/>
+        <result column="focal_length" property="focalLength"/>
+        <result column="focal_length35" property="focalLength35"/>
+        <result column="altitude" property="altitude"/>
+        <result column="altitude_ref" property="altitudeRef"/>
+        <result column="version" property="version"/>
+        <result column="aperture_value" property="apertureValue"/>
+        <result column="shutter_speed" property="shutterSpeed"/>
+        <result column="metering_mode" property="meteringMode"/>
+        <result column="white_balance" property="whiteBalance"/>
+        <result column="color_space" property="colorSpace"/>
+        <result column="sensing_method" property="sensingMethod"/>
+        <result column="subject_distance" property="subjectDistance"/>
+        <result column="scene_type" property="sceneType"/>
+    </resultMap>
+
+    <!-- 视频元数据表映射 -->
+    <resultMap id="videoMetaDataMap" type="com.memory.xiaohua.model.entity.VideoMetaData">
+        <id column="video_file_id" property="fileId"/>
+        <result column="color_space" property="colorSpace"/>
+        <result column="duration" property="duration"/>
+        <result column="fps" property="fps"/>
+        <result column="rotation" property="rotation"/>
+        <result column="video_codec_name" property="videoCodecName"/>
+        <result column="video_codec" property="videoCodec"/>
+        <result column="video_bitrate" property="videoBitrate"/>
+        <result column="audio_codec_name" property="audioCodecName"/>
+        <result column="audio_codec" property="audioCodec"/>
+        <result column="audio_sample_rate" property="audioSampleRate"/>
+        <result column="audio_channels" property="audioChannels"/>
+        <result column="copyright" property="copyright"/>
+        <result column="language" property="language"/>
+        <result column="profile" property="profile"/>
+        <result column="level" property="level"/>
+        <result column="pixel_format" property="pixelFormat"/>
+        <result column="created_time" property="createdTime"/>
+        <result column="updated_time" property="updatedTime"/>
+    </resultMap>
+
+    <select id="selectFileMetaDataById" resultMap="FileMetaDataVOMap">
+        SELECT f.*,
+               uf.upload_time,
+               img.*,
+               video.*,
+               img.file_id   AS img_file_id,
+               video.file_id AS video_file_id
+        FROM file f
+                 LEFT JOIN image_meta_data img ON f.file_id = img.file_id
+                 LEFT JOIN video_meta_data video ON f.file_id = video.file_id
+                 INNER JOIN user_file uf ON f.file_id = uf.file_id
+        WHERE f.file_id = #{fileId} limit 1
+        <!--             and uf.user_id = #{userId}-->
+    </select>
+
+
+    <!-- 文件大小分布统计 -->
+    <select id="selectVisualFileSize" resultType="com.memory.xiaohua.model.vo.visual.FileSize">
+        SELECT CASE
+                   WHEN size BETWEEN 0 AND 102400 THEN '0-100KB'
+                   WHEN size BETWEEN 102401 AND 1048576 THEN '100KB-1MB'
+                   WHEN size BETWEEN 1048577 AND 10485760 THEN '1MB-10MB'
+                   WHEN size BETWEEN 10485761 AND 52428800 THEN '10MB-50MB'
+                   WHEN size BETWEEN 52428801 AND 104857600 THEN '50MB-100MB'
+                   ELSE '100MB+'
+                   END  AS name,
+               COUNT(*) AS value
+        FROM file f
+                 INNER JOIN user_file uf ON f.file_id = uf.file_id
+        WHERE uf.user_id = #{userId}
+          AND uf.is_deleted = 0
+
+        GROUP BY CASE
+                     WHEN size BETWEEN 0 AND 102400 THEN '0-100KB'
+                     WHEN size BETWEEN 102401 AND 1048576 THEN '100KB-1MB'
+                     WHEN size BETWEEN 1048577 AND 10485760 THEN '1MB-10MB'
+                     WHEN size BETWEEN 10485761 AND 52428800 THEN '10MB-50MB'
+                     WHEN size BETWEEN 52428801 AND 104857600 THEN '50MB-100MB'
+                     ELSE '100MB+'
+                     END
+        ORDER BY MIN(size)
+    </select>
+
+    <!-- 文件类型分布统计 -->
+    <select id="selectVisualContentType" resultType="com.memory.xiaohua.model.vo.visual.FileContentType">
+        SELECT CASE
+                   WHEN content_type = 'image/png' THEN 'image/png'
+                   WHEN content_type IN ('image/jpeg', 'image/jpg', 'image/pjpeg') THEN 'image/jpeg'
+                   WHEN content_type = 'image/gif' THEN 'image/gif'
+                   WHEN content_type = 'image/bmp' THEN 'image/bmp'
+                   WHEN content_type = 'video/mp4' THEN 'video/mp4'
+                   WHEN content_type = 'video/rmvb' THEN 'video/rmvb'
+                   WHEN content_type = 'video/x-matroska' THEN 'video/x-matroska'
+                   WHEN content_type = 'video/x-ms-wmv' THEN 'video/x-ms-wmv'
+                   WHEN content_type = 'video/x-flv' THEN 'video/x-flv'
+                   ELSE '其他'
+                   END  AS name,
+               COUNT(*) AS value
+        FROM file f
+                 INNER JOIN user_file uf ON f.file_id = uf.file_id
+        WHERE uf.user_id = #{userId}
+          AND uf.is_deleted = 0
+        GROUP BY CASE
+                     WHEN content_type = 'image/png' THEN 'image/png'
+                     WHEN content_type IN ('image/jpeg', 'image/jpg', 'image/pjpeg') THEN 'image/jpeg'
+                     WHEN content_type = 'image/gif' THEN 'image/gif'
+                     WHEN content_type = 'image/bmp' THEN 'image/bmp'
+                     WHEN content_type = 'video/mp4' THEN 'video/mp4'
+                     WHEN content_type = 'video/rmvb' THEN 'video/rmvb'
+                     WHEN content_type = 'video/x-matroska' THEN 'video/x-matroska'
+                     WHEN content_type = 'video/x-ms-wmv' THEN 'video/x-ms-wmv'
+                     WHEN content_type = 'video/x-flv' THEN 'video/x-flv'
+                     ELSE '其他'
+                     END
+        HAVING name != '其他'
+        ORDER BY value DESC
+    </select>
+
+    <select id="selectFileCount" resultType="com.memory.xiaohua.model.vo.visual.VisualFileVO">
+        SELECT SUM(CASE WHEN f.category = 'image' THEN 1 ELSE 0 END) AS imageCount,
+               SUM(CASE WHEN f.category = 'video' THEN 1 ELSE 0 END) AS videoCount
+        FROM file f
+                 INNER JOIN user_file uf ON f.file_id = uf.file_id
+        WHERE uf.user_id = #{userId}
+          AND uf.is_deleted = 0
+          AND f.category IN ('image', 'video')
+    </select>
+
+
+</mapper>

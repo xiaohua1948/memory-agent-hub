@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.memory.xiaohua.mapper.PictureTagMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.memory.xiaohua.model.entity.PictureTag">
+        <id column="id" property="id" />
+        <result column="file_id" property="fileId" />
+        <result column="tagName" property="tagName" />
+        <result column="image_type" property="imageType" />
+    </resultMap>
+
+    <select id="selectAllTags" resultType="com.memory.xiaohua.model.vo.visual.FileTagVO">
+        SELECT
+            pt.tag_name AS tagName,
+            COUNT(*) AS count
+        FROM picture_tag pt
+                 INNER JOIN user_file uf ON pt.file_id = uf.file_id
+        WHERE uf.user_id = #{userId}
+          AND uf.is_deleted = 0
+        GROUP BY pt.tag_name
+        ORDER BY count DESC, pt.tag_name ASC
+    </select>
+</mapper>

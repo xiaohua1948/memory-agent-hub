@@ -1,0 +1,89 @@
+{
+    "list": [
+        {
+            "app_id": 16051585,
+            "album_id": "3586195807510502459",
+            "uk": 3361374253,
+            "tid": "317371917726257780",
+            "fsid": 418322759259234,
+            "shoot_time": 1736071053,
+            "category": 3,
+            "source": 0,
+            "status": 0,
+            "ctime": 1737191790,
+            "mtime": 1737191790,
+            "ext_status": 1,
+            "collect_status": 0,
+            "md5": "6c190344622e569e6913ca4e6a33e9aa",
+            "server_md5": "630d13f9elb2ceab6b10accde0b807a1",
+            "extra_info": {
+                "aesthetic": "6238",
+                "clarity": "9746",
+                "date_time": "2025:01:05 17:57:33",
+                "height": "4096",
+                "orientation": "TopLeftOrientation",
+                "width": "3072"
+            },
+            "path": "\/youa\/album\/IMG_20250105_184917.jpg",
+            "size": 4734767,
+            "file_status": 0,
+            "thumburl": [
+                "https:\/\/pcsdata.baidu.com\/thumbnail\/630d13f9elb2ceab6b10accde0b807a1?fid=3361374253-16051585-418322759259234&rt=pr&sign=FDTAER-yUdy3dSFZ0SVxtzShv1zcMqd-UdLlixme3gwgj97It%2FjwrkiWHwY%3D&expires=48h&chkv=0&chkbd=0&chkpc=&dp-logid=410980947539932565&dp-callid=0&time=1737190800&bus_no=26&size=c800_u800&quality=100&vuk=-&ft=video",
+                "https:\/\/pcsdata.baidu.com\/thumbnail\/630d13f9elb2ceab6b10accde0b807a1?fid=3361374253-16051585-418322759259234&rt=pr&sign=FDTAER-yUdy3dSFZ0SVxtzShv1zcMqd-UdLlixme3gwgj97It%2FjwrkiWHwY%3D&expires=48h&chkv=0&chkbd=0&chkpc=&dp-logid=410980947539932565&dp-callid=0&time=1737190800&bus_no=26&size=c1600_u1600&quality=100&vuk=-&ft=video"
+            ],
+            "dlink": "https:\/\/photo.baidu.com\/youai\/album\/v1\/download?album_id=3586195807510502459&uk=3361374253&tid=317371917726257780&fsid=418322759259234",
+            "nickname": "\u5c0f\u534e",
+            "photo": "https:\/\/himg.bdimg.com\/sys\/portraith\/item\/public.1.9847eabc.MYh7bJDbGVT3KFlUiIpBuQ",
+            "desc": "",
+            "face_info": ""
+        },
+        {
+            "app_id": 16051585,
+            "album_id": "3586195807510502459",
+            "uk": 3361374253,
+            "tid": "317371917726257780",
+            "fsid": 142186535359765,
+            "shoot_time": 1735663162,
+            "category": 1,
+            "source": 0,
+            "status": 0,
+            "ctime": 1737191811,
+            "mtime": 1737191811,
+            "ext_status": 1,
+            "collect_status": 0,
+            "md5": "a210be36d31d062aee95c0d9365ee4ce",
+            "server_md5": "fdfb5143fr5ce190b34b69060f22c21f",
+            "extra_info": {
+                "aesthetic": "5717",
+                "clarity": "6921",
+                "date_time": "2024:12:31 16:39:22",
+                "duration": "7",
+                "duration_ms": "6603",
+                "height": "1080",
+                "orientation": "UndefinedOrientation",
+                "width": "608"
+            },
+            "path": "\/youa\/album\/VID_20250101_003915_DOLBY.mp4",
+            "size": 30674878,
+            "file_status": 0,
+            "thumburl": [
+                "https:\/\/pcsdata.baidu.com\/thumbnail\/fdfb5143fr5ce190b34b69060f22c21f?fid=3361374253-16051585-142186535359765&rt=pr&sign=FDTAER-yUdy3dSFZ0SVxtzShv1zcMqd-dDZhTA1mjL1nLnNp4xzvxQ9KJEk%3D&expires=48h&chkv=0&chkbd=0&chkpc=&dp-logid=410980947539932565&dp-callid=0&time=1737190800&bus_no=26&size=c800_u800&quality=100&vuk=-&ft=video",
+                "https:\/\/pcsdata.baidu.com\/thumbnail\/fdfb5143fr5ce190b34b69060f22c21f?fid=3361374253-16051585-142186535359765&rt=pr&sign=FDTAER-yUdy3dSFZ0SVxtzShv1zcMqd-dDZhTA1mjL1nLnNp4xzvxQ9KJEk%3D&expires=48h&chkv=0&chkbd=0&chkpc=&dp-logid=410980947539932565&dp-callid=0&time=1737190800&bus_no=26&size=c1600_u1600&quality=100&vuk=-&ft=video"
+            ],
+            "dlink": "https:\/\/photo.baidu.com\/youai\/album\/v1\/download?album_id=3586195807510502459&uk=3361374253&tid=317371917726257780&fsid=142186535359765",
+            "nickname": "\u5c0f\u534e",
+            "photo": "https:\/\/himg.bdimg.com\/sys\/portraith\/item\/public.1.9847eabc.MYh7bJDbGVT3KFlUiIpBuQ",
+            "desc": "",
+            "face_info": ""
+        }
+    ],
+    "reset": 0,
+    "cursor": "eyJsb3YiOjE3MzU2NjMxNjIsImZvdiI6MTczNjA3MTA1MywibGZzaWQiOjE0MjE4NjUzNTM1OTc2NSwiZmZpc2QiOjQxODMyMjc1OTI1OTIzNCwidiI6MX0",
+    "total_count": 2,
+    "video_count": 1,
+    "pic_count": 1,
+    "has_more": 0,
+    "action": 0,
+    "errno": 0,
+    "request_id": 410980947539932565
+}
