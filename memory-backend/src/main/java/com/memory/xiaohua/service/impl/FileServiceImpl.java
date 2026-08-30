@@ -217,6 +217,8 @@ public class FileServiceImpl implements FileService {
     }
 
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean uploadVideoFile(Long userId, MultipartFile multipartFile, String fileSuffix, LocalDateTime lastModifiedTime, Long albumId) {
 
         //用于计算MD5
@@ -242,6 +244,10 @@ public class FileServiceImpl implements FileService {
 
         // 获取视频封面
         byte[] thumbnailByteArray = videoMetadataParserUtil.extractCover(multipartFile);
+        // 2.3 修复：extractCover 可能返回 null（视频无画面），直接使用会 NPE
+        if (thumbnailByteArray == null || thumbnailByteArray.length == 0) {
+            thumbnailByteArray = new byte[]{0};  // 占位字节，MinIO 不接受 0 长度流
+        }
 
 
         LocalDateTime uploadTime = LocalDateTime.now();
@@ -265,7 +271,9 @@ public class FileServiceImpl implements FileService {
         fileEntity.setWidth(videoMetadata.getWidth());
         fileEntity.setHeight(videoMetadata.getHeight());
 
-        int rotation = videoMetadata.getRotation().intValue();
+        // 2.3 修复：getRotation 可能为 null（元数据解析失败），拆箱 NPE
+        Double rotationObj = videoMetadata.getRotation();
+        int rotation = rotationObj != null ? rotationObj.intValue() : 0;
         //为解决视频前端封面显示问题，需要正确设置width、height，如果有旋转，就跳转宽高像素顺序
         boolean isRotation = (rotation == 90 || rotation == 270);
         if(isRotation){
@@ -614,16 +622,18 @@ public class FileServiceImpl implements FileService {
     @Override
     public ShareFileVO getShareInfo(String shareKey) {
         shareKey = "share:link:" + shareKey;
-
+        // 2.6 修复：先判空再取 expire（原顺序反了，过期时 getExpire 返回负数，localDateTime 计算无意义）
         Map<String, String> shareMap = redisUtil.hgetAllAsString(shareKey);
-        Long expireMillis = redisUtil.getExpire(shareKey);
-        LocalDateTime expireTime = LocalDateTime.now().plus(expireMillis, ChronoUnit.MILLIS);
         if (shareMap == null || shareMap.isEmpty()) {
             throw new BusinessException(StatusCode.NOT_FOUND_ERROR, "分享链接已过期或不存在");
         }
+        Long expireMillis = redisUtil.getExpire(shareKey);
+        LocalDateTime expireTime = LocalDateTime.now().plus(expireMillis, ChronoUnit.MILLIS);
         Long sharerId = Long.parseLong((String) shareMap.get("userId"));
         List<String> fileIds = JSON.parseArray((String) shareMap.get("fileIds"), String.class);
         Long visitCount = Long.parseLong((String) shareMap.get("visitCount"));
+        // 2.6 修复：访问计数自增并写回（原功能未实现，永远是 0）
+        redisUtil.hset(shareKey, "visitCount", String.valueOf(visitCount + 1));
 
 
         // 3. 获取用户信息

@@ -66,24 +66,19 @@ public class FileUtil {
      * 计算MD5
      */
     public String getMD5(InputStream inputStream)  {
-
-        MessageDigest MD5 = null;
-        try {
-            MD5 = MessageDigest.getInstance("MD5");
-
-        byte[] buffer = new byte[8192];
+        // 2.8 修复：用 try-with-resources 确保异常时流也关闭
+        try (inputStream) {
+            MessageDigest md5 = MessageDigest.getInstance("MD5");
+            byte[] buffer = new byte[8192];
             int length;
             while ((length = inputStream.read(buffer)) != -1) {
-                MD5.update(buffer, 0, length);
+                md5.update(buffer, 0, length);
             }
-            inputStream.close();
-         }
+            return new String(Hex.encodeHex(md5.digest()));
+        }
         catch (Exception e) {
             throw new RuntimeException("计算Md5失败: " + e.getMessage(), e);
         }
-            //  采用MD5方式保证每个文件的唯一性
-
-            return  new String(Hex.encodeHex(MD5.digest()));
     }
     /**
      *  保持原始分辨率，减低图片质量

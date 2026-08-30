@@ -47,8 +47,7 @@ public class RecycleServiceImpl implements RecycleService {
 
     @Override
     public void dropPicture(List<String> fileIds, Long userId) {
-        List<FileEntity> fileEntities = fileMapper.selectFileByIds(fileIds, userId);
-        //只删除关联表，物理删除，等服务器定时任务执行
+        // 2.5 修复：selectFileByIds 查询结果从未使用，移除死代码
         userFileMapper.dropFile(userId, fileIds);
     }
 

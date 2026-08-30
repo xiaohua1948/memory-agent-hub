@@ -3,8 +3,9 @@ server:
 spring:
   servlet:
     multipart:
-      max-file-size: 10000MB
-      max-request-size: 10000MB
+      # 2.9 修复：10GB 上限过大，降到 500MB（按需调整）
+      max-file-size: 500MB
+      max-request-size: 500MB
       enabled: true
   application:
     name: memory-backend
@@ -98,3 +99,8 @@ huawei:
       endpoint: image.cn-north-4.myhuaweicloud.com
       threshold: 10
       language: zh
+
+# CORS 白名单（2.10 修复）：逗号分隔允许的前端 origin，留空则关闭凭据跨域（本地开发）
+# 生产环境示例：http://127.0.0.1:8081,http://127.0.0.1:8083,https://your-domain.com
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:}

@@ -19,7 +19,9 @@ import com.memory.xiaohua.utils.auth.PasswordUtil;
 import com.memory.xiaohua.utils.auth.RedisUtil;
 import com.memory.xiaohua.utils.auth.SendEmailUtil;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.concurrent.TimeUnit;
 
@@ -29,6 +31,7 @@ import java.util.concurrent.TimeUnit;
  * @date: 2025/2/18,17:00
  */
 @Service
+@Slf4j
 public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements AuthService {
 
     @Resource
@@ -46,12 +49,16 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
 
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean accountRegister(UserAccountDTO userAccountDTO) {
         String account = userAccountDTO.getAccount();
         String password = userAccountDTO.getPassword();
         String email = userAccountDTO.getEmail();
         String code = userAccountDTO.getCode();
-        // 1.校验
+        // 1.校验（2.2 修复：先判空，再取长度，避免 null 直接 NPE）
+        if (StrUtil.hasBlank(account, password, email, code)) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "参数不能为空!");
+        }
         if (account.length() < 6) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "用户账号少于6位!");
         }
@@ -63,7 +70,7 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         }
         Object redisCode =  redisUtil.get("email:code:" + email);
         if (redisCode == null){
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱验证码错误!");
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱验证码已过期!");
         }
         if(!redisCode.equals(code)){
             throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱验证码错误!");
@@ -78,7 +85,6 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         QueryWrapper.clear();
         QueryWrapper.eq("email",email);
         selectOne = userMapper.selectOne(QueryWrapper);
-        System.out.println(selectOne);
         if( selectOne != null ){
             throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱已注册，请换一个!");
         }
@@ -92,6 +98,8 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         UserStorage userStorage = new UserStorage();
         userStorage.setUserId(user.getUserId());
         userStorageMapper.insert(userStorage);
+        // 2.1.1 修复：注册成功后删除验证码，防止 5 分钟内重复使用
+        redisUtil.delete("email:code:" + email);
         return res > 0;
     }
 
@@ -115,7 +123,8 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         User user = userMapper.selectOne(queryWrapper);
 
         if(user == null){
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "用户账号不存在!");
+            // 2.1.6 修复：统一提示"账号或密码错误"，避免账号枚举
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "用户账号或密码错误!");
         }
         if(!passwordUtil.matches(password,user.getPassword())){
             throw new BusinessException(StatusCode.PARAMS_ERROR, "用户账号或密码错误!");
@@ -133,19 +142,26 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
     @Override
     public String getEmailCode(UserAccountDTO userAccountDTO) {
         String email = userAccountDTO.getEmail();
-        String emailCode;
-        try{
-            emailCode = sendEmailUtil.sendEmailCode(email);
-            if (sendEmailUtil.validate(email)){
-                throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱格式错误!");
-            }
+        // 2.1.3 修复：先校验邮箱格式，再发邮件（原逻辑顺序反了）
+        if (email == null || email.isBlank() || sendEmailUtil.validate(email)) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱格式错误!");
         }
-        catch (Exception e){
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "获取邮箱验证码失败!");
+        // 2.1.2 修复：发送频率限制，60 秒内同一邮箱只能请求一次
+        String lockKey = "email:lock:" + email;
+        if (!redisUtil.setIfAbsent(lockKey, "1", 60, TimeUnit.SECONDS)) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "请求过于频繁，请稍后再试!");
+        }
+        String emailCode;
+        try {
+            emailCode = sendEmailUtil.sendEmailCode(email);
+        } catch (Exception e) {
+            log.error("发送邮箱验证码失败: {}", email, e);
+            // 发送失败释放频率锁，允许重试
+            redisUtil.delete(lockKey);
+            throw new BusinessException(StatusCode.SYSTEM_ERROR, "获取邮箱验证码失败!");
         }
         //验证码存入redis 有效期5min
-        redisUtil.set("email:code:"+email,emailCode,5, TimeUnit.MINUTES);
-
+        redisUtil.set("email:code:" + email, emailCode, 5, TimeUnit.MINUTES);
         return emailCode;
     }
 
@@ -163,6 +179,8 @@ public class AuthServiceImpl extends ServiceImpl<UserMapper, User> implements Au
         if(!code.equals(redisCode)){
             throw new BusinessException(StatusCode.PARAMS_ERROR, "邮箱验证码错误!");
         }
+        // 2.1.1 修复：验证码登录成功后删除验证码，防止重复使用
+        redisUtil.delete("email:code:" + email);
         // 2.查询
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("email", email);

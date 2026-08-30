@@ -1,21 +1,38 @@
 package com.memory.xiaohua.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
+    // 2.10 修复：CORS 白名单化，从配置注入允许的 origins，避免任意来源携带凭据跨域调用
+    // 配置示例（application.yml）：cors.allowed-origins: http://127.0.0.1:8081,http://127.0.0.1:8083
+    // 不配置或为空时退回 "*"（不携带凭据时安全）
+    @Value("${cors.allowed-origins:}")
+    private String allowedOrigins;
+
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/**") // 所有接口
-                // 允许任意来源（本地开发 localhost:8080/8082、Docker 部署 127.0.0.1:8081/8083 等）。
-                // 注意：allowCredentials(true) 时不能用 allowedOrigins("*")，必须用 allowedOriginPatterns
-                .allowedOriginPatterns("*")
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") // 允许的方法
-                .allowedHeaders("*") // 允许所有头部
-                .exposedHeaders("Authorization") // 允许前端读取 Authorization
-                .allowCredentials(true) // 如果需要携带 Cookie
-                .maxAge(3600); // 缓存预检请求结果（1小时）
+        if (allowedOrigins != null && !allowedOrigins.isBlank()) {
+            String[] origins = allowedOrigins.split(",");
+            registry.addMapping("/**")
+                    .allowedOrigins(origins)
+                    .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                    .allowedHeaders("*")
+                    .exposedHeaders("Authorization")
+                    .allowCredentials(true)
+                    .maxAge(3600);
+        } else {
+            // 未配置时：本地开发用 * 但关闭凭据（生产必须配置白名单）
+            registry.addMapping("/**")
+                    .allowedOriginPatterns("*")
+                    .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                    .allowedHeaders("*")
+                    .exposedHeaders("Authorization")
+                    .allowCredentials(false)
+                    .maxAge(3600);
+        }
     }
 }

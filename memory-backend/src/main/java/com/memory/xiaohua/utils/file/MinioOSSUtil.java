@@ -73,7 +73,8 @@ public class MinioOSSUtil {
 
     public void uploadToOSS(String objectName, InputStream inputstream, long objectSize,
                                String contentType)  {
-        try {
+        // 2.8 修复：用 try-with-resources 确保异常时流也关闭
+        try (inputstream) {
             // 检查存储桶是否存在
             boolean found = minioClient.bucketExists(BucketExistsArgs.builder()
                     .bucket(configuration.getBucketName())
@@ -92,8 +93,6 @@ public class MinioOSSUtil {
                     .stream(inputstream, objectSize, -1)
                     .contentType(contentType)
                     .build());
-
-            inputstream.close();
         }
         catch (Exception e) {
             throw new RuntimeException("上传文件错误: "+objectName + e.getMessage(), e);
@@ -152,15 +151,12 @@ public class MinioOSSUtil {
         return url;
     }
     public byte[] getFileBytes(String objectName){
-        InputStream inputStream;
-        // 获取文件流
-        try {
-            inputStream = minioClient.getObject(
-                    GetObjectArgs.builder()
-                            .bucket(configuration.getBucketName())
-                            .object(objectName)
-                            .build());
-
+        // 2.8 修复：用 try-with-resources 确保流关闭
+        try (InputStream inputStream = minioClient.getObject(
+                GetObjectArgs.builder()
+                        .bucket(configuration.getBucketName())
+                        .object(objectName)
+                        .build())) {
             return inputStream.readAllBytes();
         }
         catch (IOException | ErrorResponseException | InsufficientDataException | InternalException |
@@ -174,19 +170,16 @@ public class MinioOSSUtil {
      * 下载文件
      */
     public void download(HttpServletResponse response, FileEntity fileEntity) {
-        InputStream in = null;
-        try {
-            String objectName = fileEntity.getFileObjectName();
+        // 2.8 修复：用 try-with-resources 确保异常时流也关闭
+        try (InputStream in = minioClient.getObject(GetObjectArgs.builder().bucket(configuration.getBucketName()).object(fileEntity.getFileObjectName()).build())) {
             String originFileName = fileEntity.getOriginFileName();
             // 获取对象信息
-            StatObjectResponse stat = minioClient.statObject(StatObjectArgs.builder().bucket(configuration.getBucketName()).object(objectName).build());
+            StatObjectResponse stat = minioClient.statObject(StatObjectArgs.builder().bucket(configuration.getBucketName()).object(fileEntity.getFileObjectName()).build());
             response.setContentType(stat.contentType());
             response.setContentLengthLong(fileEntity.getSize());
             response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode(originFileName, StandardCharsets.UTF_8));
             // 文件下载
-            in = minioClient.getObject(GetObjectArgs.builder().bucket(configuration.getBucketName()).object(objectName).build());
             IOUtils.copy(in, response.getOutputStream());
-            in.close();
         } catch (Exception e) {
             throw new RuntimeException("文件下载错误: " + e.getMessage(), e);
         }

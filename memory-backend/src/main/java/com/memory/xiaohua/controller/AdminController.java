@@ -8,6 +8,8 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.memory.xiaohua.common.BaseResponse;
 import com.memory.xiaohua.common.ResultUtil;
+import com.memory.xiaohua.exception.BusinessException;
+import com.memory.xiaohua.exception.StatusCode;
 import com.memory.xiaohua.mapper.RecordMapper;
 import com.memory.xiaohua.mapper.UserMapper;
 import com.memory.xiaohua.mapper.UserStorageMapper;
@@ -18,8 +20,8 @@ import com.memory.xiaohua.model.entity.User;
 import com.memory.xiaohua.model.entity.UserStorage;
 import com.memory.xiaohua.model.vo.entity.UserInfoVO;
 import com.memory.xiaohua.model.vo.visual.MemoryVO;
+import com.memory.xiaohua.utils.auth.PasswordUtil;
 import jakarta.annotation.Resource;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -43,6 +45,9 @@ public class AdminController {
 
     @Resource
     RecordMapper recordMapper;
+
+    @Resource
+    PasswordUtil passwordUtil;
 
     @SaCheckRole("admin")
     @GetMapping("/selectAllUserInfo")
@@ -95,16 +100,29 @@ public class AdminController {
 
     @SaCheckRole("admin")
     @PostMapping("/addAdmin")
+    @Transactional(rollbackFor = Exception.class)
     public BaseResponse<?> addAdmin(@RequestBody User userDto) {
-
+        if (userDto == null || userDto.getAccount() == null || userDto.getPassword() == null || userDto.getEmail() == null) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "参数不能为空!");
+        }
+        // 2.7 修复：检查账号/邮箱重复（避免重复插入报 500）
+        QueryWrapper<User> checkWrapper = new QueryWrapper<>();
+        checkWrapper.eq("account", userDto.getAccount())
+                .or().eq("email", userDto.getEmail());
+        if (userMapper.selectCount(checkWrapper) > 0) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "账号或邮箱已存在!");
+        }
         User admin = new User();
-        admin.setUserName("管理员"+Math.random()*100);
+        // 2.7 修复：Math.random()*100 生成小数用户名，改为整数
+        int suffix = (int) (Math.random() * 100);
+        admin.setUserName("管理员" + suffix);
         admin.setAccount(userDto.getAccount());
-        admin.setPassword(new BCryptPasswordEncoder().encode(userDto.getPassword()));
+        // 2.7 修复：复用注入的 PasswordUtil，而非每次 new BCryptPasswordEncoder()
+        admin.setPassword(passwordUtil.encode(userDto.getPassword()));
         admin.setRole("admin");
         admin.setEmail(userDto.getEmail());
         userMapper.insert(admin);
-        return ResultUtil.success("查询成功");
+        return ResultUtil.success("添加成功");
     }
 
     @SaCheckRole("admin")

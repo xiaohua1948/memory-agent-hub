@@ -65,15 +65,30 @@ public class FileController {
     @Operation(summary = "上传文件", description = "上传文件")
     public BaseResponse<?> upload(HttpServletRequest request, MultipartFile multipartFile, String lastModified, Long albumId) {
 
+        // 2.2 修复：参数校验缺失会导致 NPE
+        if (multipartFile == null || multipartFile.isEmpty()) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "文件不能为空!");
+        }
+        if (lastModified == null || lastModified.isBlank()) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "缺少文件修改时间参数!");
+        }
         if (albumId == null) {
             albumId = (long) -1;
         }
-        long timestamp = Long.parseLong(lastModified);
+        long timestamp;
+        try {
+            timestamp = Long.parseLong(lastModified);
+        } catch (NumberFormatException e) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "文件修改时间格式错误!");
+        }
         Instant instant = Instant.ofEpochMilli(timestamp);
         LocalDateTime lastModifiedTime = instant.atZone(ZoneId.systemDefault()).toLocalDateTime();
         Long userId = Long.parseLong(StpUtil.getLoginId().toString());
 
         String originalFilename = multipartFile.getOriginalFilename();
+        if (originalFilename == null) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "文件名不能为空!");
+        }
         int lastIndex = originalFilename.lastIndexOf('.');
         if (lastIndex == -1) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "文件格式错误!");
@@ -304,16 +319,19 @@ public class FileController {
     }
     @PostMapping("/addPictureTag")
     public BaseResponse<?> addPictureTag(HttpServletRequest request, @RequestParam("fileIds") List<String> fileIds,String imageType, String tagName) {
-        Long userId = Long.parseLong(StpUtil.getLoginId().toString());
-        boolean res = fileService.addTag(fileIds, imageType,tagName, userId);
-        //日志记录HttpServletRequest request
-        if(imageType == null){
+        // 2.2 修复：tagName 校验必须在 addTag 调用之前（原顺序反了）
+        if (fileIds == null || fileIds.isEmpty()) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "文件ID不能为空!");
+        }
+        if (tagName == null || tagName.isBlank()) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "标签名不能为空!");
+        }
+        if (imageType == null || imageType.isBlank()) {
             imageType = "其他";
         }
-        if(tagName == null){
-           return ResultUtil.error(StatusCode.PARAMS_ERROR, "添加失败");
-        }
-        recordService.createRecordLog("添加照片标签:" + imageType+"-"+tagName, 1, userId, request);
+        Long userId = Long.parseLong(StpUtil.getLoginId().toString());
+        boolean res = fileService.addTag(fileIds, imageType, tagName, userId);
+        recordService.createRecordLog("添加照片标签:" + imageType + "-" + tagName, 1, userId, request);
         return res ? ResultUtil.success("添加成功！") : ResultUtil.error(StatusCode.PARAMS_ERROR, "添加失败");
     }
 
