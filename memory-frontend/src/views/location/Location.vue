@@ -51,7 +51,7 @@
                 <div class="picture-group-album" v-for="(item, index) in locationAlbumList" :key="index">
                     <div class="picture-group-item" :style="pictureSacleStyle"
                         @click="handleClickLocationAlbum(item.locationLevel, item.locationValue)">
-                        <el-image :src="item.coverUrl || 'src/assets/image/album.png'" fit="cover"
+                        <el-image :src="item.coverUrl || defaultCover" fit="cover"
                             class="picture-group-image">
                         </el-image>
                         <div class="picture-group-shadow"></div>
@@ -85,6 +85,7 @@ import { onMounted, ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { Check } from '@element-plus/icons-vue'
 import { selectAllLocationAlbum } from '@/api/album/album'
+import defaultCover from '@/assets/image/album.png';
 
 /******************************​ 接口定义 ​******************************/
 interface FilePage {

@@ -37,7 +37,7 @@
                 <div class="picture-group-album" v-for="(item, index) in ModelAlbumList" :key="index">
                     <div class="picture-group-item" :style="pictureSacleStyle"
                         @click="handleClickModelAlbum(item.makeName, item.modelName)">
-                        <el-image :src="item.coverUrl || 'src/assets/image/album.png'" fit="cover"
+                        <el-image :src="item.coverUrl || defaultCover" fit="cover"
                             class="picture-group-image">
                         </el-image>
                         <div class="picture-group-shadow"></div>
@@ -71,6 +71,7 @@ import { onMounted, ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { Check } from '@element-plus/icons-vue'
 import { selectAllModelAlbum } from '@/api/album/album'
+import defaultCover from '@/assets/image/album.png';
 
 
 /******************************​ 配置项 ​******************************/

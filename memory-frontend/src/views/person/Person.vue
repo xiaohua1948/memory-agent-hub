@@ -98,7 +98,7 @@
                                 </el-checkbox>
                             </el-checkbox-group>
                             <el-image @click="handleClickPersonAlbum(item.personId)" :style="pictureSacleStyle"
-                                :src="item.coverUrl || 'src/assets/image/album.png'" class="picture-group-image">
+                                :src="item.coverUrl || defaultCover" class="picture-group-image">
                             </el-image>
                             <div class="picture-item-combination" v-if="personNameInput[index]">
                                 <el-input maxlength="10" type="text" :ref="(el) => setInputRef(el, index)"
@@ -145,6 +145,7 @@ import { onMounted, ref, computed, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { Check, Select } from '@element-plus/icons-vue'
 import { selectAllPersonAlbum, updatePersonName, mergePerson, hiddenPerson } from '@/api/person/person'
+import defaultCover from '@/assets/image/album.png';
 
 
 /******************************​ 配置项 ​******************************/

@@ -105,7 +105,7 @@
                             {{ album.imageCount + album.videoCount }}
                         </div>
                         <el-image @click="handleClickAlbum(album)"
-                            :src="album.coverUrl != null ? album.coverUrl : 'src/assets/image/album.png'"
+                            :src="album.coverUrl || defaultCover"
                             :class="{ 'picture-group-image': true, 'picture-group-image-animation': isImageChecked(album.albumId) }"
                             fit="cover">
                         </el-image>
@@ -177,6 +177,7 @@ import type { CheckboxValueType } from 'element-plus'
 import { selectAllAlbum, addAlbum, getDownloadAlbumToken, deleteAlbum } from '@/api/album/album'
 import $bus from '@/utils/bus.ts'
 import requestPublicConfig from "@/api/config";
+import defaultCover from '@/assets/image/album.png';
 /******************************​ 接口定义 ​******************************/
 interface FilePage {
     records: API.albumInfo;
