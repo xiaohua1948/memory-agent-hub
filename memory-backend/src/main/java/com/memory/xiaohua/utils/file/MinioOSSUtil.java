@@ -166,7 +166,22 @@ public class MinioOSSUtil {
     }
 
     /**
-     * 若配置了 public-url（浏览器可达地址），则将预签名 URL 中的 endpoint 替换为 public-url
+     * 获取对象输入流（调用方负责关闭）。
+     * 大文件场景应优先使用该方法流式处理，避免整文件读入内存。
+     */
+    public InputStream getObjectStream(String objectName) {
+        try {
+            return minioClient.getObject(GetObjectArgs.builder()
+                    .bucket(configuration.getBucketName())
+                    .object(objectName)
+                    .build());
+        } catch (Exception e) {
+            throw new RuntimeException("获取文件流错误: " + objectName + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 读取对象全部字节（仅适用于小文件）
      */
     public byte[] getFileBytes(String objectName){
         // 2.8 修复：用 try-with-resources 确保流关闭
@@ -304,6 +319,33 @@ public class MinioOSSUtil {
 
         } catch (Exception e) {
             throw new RuntimeException("删除文件错误: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 判断 OSS 对象是否存在。
+     * 用于秒传兜底校验：file 主表残留但 OSS 已被彻底删除时，不应再秒传。
+     */
+    public boolean exists(String objectName) {
+        if (objectName == null || objectName.isEmpty()) {
+            return false;
+        }
+        try {
+            minioClient.statObject(StatObjectArgs.builder()
+                    .bucket(configuration.getBucketName())
+                    .object(objectName)
+                    .build());
+            return true;
+        } catch (ErrorResponseException e) {
+            // 404 表示对象不存在
+            if (e.errorResponse().code() != null
+                    && (e.errorResponse().code().equals("NoSuchKey")
+                        || e.errorResponse().code().equals("NoSuchObject"))) {
+                return false;
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
         }
     }
 }

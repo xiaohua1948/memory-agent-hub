@@ -95,7 +95,7 @@ public class RecycleController {
         recycleService.dropPicture(fileIds,userId);
 
         //日志记录
-        recordService.createRecordLog("恢复图片",fileIds.size(),userId,request);
+        recordService.createRecordLog("彻底删除",fileIds.size(),userId,request);
         return ResultUtil.success("删除成功!") ;
     }
 

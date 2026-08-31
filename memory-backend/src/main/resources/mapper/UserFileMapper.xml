@@ -24,9 +24,8 @@
     </update>
 
     <delete id="dropFile">
-        DELETE  from user_file
+        DELETE from user_file
         where user_id = #{userId}
-        AND is_deleted = 1
         <if test="fileIds != null and fileIds.size() > 0">
             AND file_id IN
             <foreach collection="fileIds" item="fileId"

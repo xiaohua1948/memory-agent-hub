@@ -3,9 +3,10 @@ server:
 spring:
   servlet:
     multipart:
-      # 2.9 修复：10GB 上限过大，降到 500MB（按需调整）
-      max-file-size: 500MB
-      max-request-size: 500MB
+      # 分片上传下每个请求只携带单个分片（默认 5MB），因此这里只需略大于分片大小即可，
+      # 单文件大小上限改由 upload.max-file-size 控制，从而支持 GB 级文件而不抬高单请求内存占用。
+      max-file-size: 10MB
+      max-request-size: 10MB
       enabled: true
   application:
     name: memory-backend
@@ -65,6 +66,27 @@ minio:
   bucket-name: ${MINIO_BUCKET_NAME:pictures}
   # 浏览器可访问的 MinIO 地址（用于替换预签名URL中的endpoint），Docker 部署时配置，如 http://127.0.0.1:9002
   public-url: ${MINIO_PUBLIC_URL:}
+#分片上传配置（与前端 constants 保持一致）
+upload:
+  # 分片大小，5MB。S3/MinIO multipart 要求除最后一片外每片不小于 5MB
+  chunk-size: 5242880
+  # 单文件最大 2GB
+  max-file-size: 2147483648
+  # 合并后是否校验整体 MD5
+  md5-verify-enabled: true
+  # 超过该大小则跳过服务端全量 MD5 校验，避免合并接口长时间阻塞
+  md5-verify-max-size: 209715200
+  # 上传任务有效期（小时），超时未完成将被定时任务清理
+  task-ttl-hours: 24
+  # 单用户并发上传任务数上限
+  max-concurrent-tasks: 5
+  # 图片超过该大小才压缩缩略图，小图直接复用原图
+  thumbnail-threshold: 512000
+  # 缩略图长边像素
+  thumbnail-max-size: 512
+  # 缩略图质量 0~1
+  thumbnail-quality: 0.75
+
 #阿里OSS配置
 aliyun:
   oss:

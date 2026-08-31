@@ -7,7 +7,6 @@ import com.memory.xiaohua.common.ResultUtil;
 import com.memory.xiaohua.exception.BusinessException;
 import com.memory.xiaohua.exception.StatusCode;
 import com.memory.xiaohua.model.dto.DownLoadInfoDTO;
-import com.memory.xiaohua.model.dto.FileChunkDTO;
 import com.memory.xiaohua.model.entity.PictureTag;
 import com.memory.xiaohua.model.vo.FileInfoListVO;
 import com.memory.xiaohua.model.vo.entity.FileMetaDataVO;
@@ -62,71 +61,9 @@ public class FileController {
     @Resource
     private AlbumService albumService;
 
-    @PostMapping("/upload")
-    @Operation(summary = "上传文件", description = "上传文件")
-    public BaseResponse<?> upload(HttpServletRequest request, MultipartFile multipartFile, String lastModified, Long albumId) {
-
-        // 2.2 修复：参数校验缺失会导致 NPE
-        if (multipartFile == null || multipartFile.isEmpty()) {
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "文件不能为空!");
-        }
-        if (lastModified == null || lastModified.isBlank()) {
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "缺少文件修改时间参数!");
-        }
-        if (albumId == null) {
-            albumId = (long) -1;
-        }
-        long timestamp;
-        try {
-            timestamp = Long.parseLong(lastModified);
-        } catch (NumberFormatException e) {
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "文件修改时间格式错误!");
-        }
-        Instant instant = Instant.ofEpochMilli(timestamp);
-        LocalDateTime lastModifiedTime = instant.atZone(ZoneId.systemDefault()).toLocalDateTime();
-        Long userId = Long.parseLong(StpUtil.getLoginId().toString());
-
-        String originalFilename = multipartFile.getOriginalFilename();
-        if (originalFilename == null) {
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "文件名不能为空!");
-        }
-        int lastIndex = originalFilename.lastIndexOf('.');
-        if (lastIndex == -1) {
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "文件格式错误!");
-        }
-        String fileSuffix = originalFilename.substring(lastIndex + 1);
-        //获取文件类型，要么是图片，要么是视频
-        String fileType = fileUtil.getFileType(fileSuffix);
-
-        if (fileType.isEmpty()) {
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "文件格式错误!");
-        }
-        boolean res;
-        if ("image".equals(fileType)) {
-            res = fileService.uploadImageFile(userId, multipartFile, fileSuffix, lastModifiedTime, albumId);
-        } else {
-            res = fileService.uploadVideoFile(userId, multipartFile, fileSuffix, lastModifiedTime, albumId);
-        }
-        long size = multipartFile.getSize();
-        //日志记录
-        recordService.createRecordLog("上传照片:" + multipartFile.getOriginalFilename(), 1, userId, request);
-        return res ? ResultUtil.success("上传成功!") : ResultUtil.error(StatusCode.PARAMS_ERROR, "上传失败!");
-    }
-
-
-    @GetMapping("/upload")
-    public BaseResponse<?> CheckUpload(FileChunkDTO fileChunkDTO) {
-
-        Long userId = Long.parseLong(StpUtil.getLoginId().toString());
-        Long albumId = fileChunkDTO.getAlbumId();
-        String MD5 = fileChunkDTO.getIdentifier();
-        if (albumId == null || MD5 == null) {
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "参数错误");
-        }
-        Boolean res = fileService.checkIsUpload(userId, fileChunkDTO.getAlbumId(), fileChunkDTO.getIdentifier());
-
-        return res ? ResultUtil.success("exist") : ResultUtil.success("noExist");
-    }
+    // 上传接口已迁移至 UploadController：
+    // 由"整文件单次上传"改为分片上传三阶段（pre-check 预检/秒传 → chunk 传分片 → complete 合并），
+    // 支持断点续传、秒传与精确的失败重试。
 
     @PostMapping("/selectAllFileInfo")
     @Operation(summary = "获取文件信息", description = "分页按照排序字段、类型、图片类型获取文件信息")

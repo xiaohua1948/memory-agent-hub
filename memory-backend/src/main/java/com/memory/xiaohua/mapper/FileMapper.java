@@ -34,6 +34,12 @@ public interface FileMapper extends BaseMapper<FileEntity> {
     @Select("select file_id from file where md5 = #{md5}")
     String isFileExist(String md5);
 
+    /**
+     * 根据 md5 查询 OSS 原图对象名，用于秒传兜底校验 OSS 对象是否仍存在
+     */
+    @Select("select file_object_name from file where md5 = #{md5}")
+    String getObjectNameByMd5(String md5);
+
 
     /**
      * 查询文件信息

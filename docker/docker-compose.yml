@@ -68,6 +68,74 @@ services:
       retries: 10
       start_period: 10s
 
+  # ---------------- RocketMQ (NameServer) ----------------
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.3.1
+    container_name: memory-rocketmq-namesrv
+    restart: unless-stopped
+    command: ["sh", "mqnamesrv"]
+    environment:
+      # 限制 NameServer JVM 内存，避免本地 Docker Desktop OOM
+      JAVA_OPT_EXT: "-server -Xms256m -Xmx256m -Xmn128m"
+      TZ: Asia/Shanghai
+    ports:
+      - "${ROCKETMQ_NAMESRV_PORT}:9876"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9876"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+  # ---------------- RocketMQ (Broker) ----------------
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.1
+    container_name: memory-rocketmq-broker
+    restart: unless-stopped
+    command: ["sh", "mqbroker", "-n", "rocketmq-namesrv:9876"]
+    environment:
+      # Broker 监听地址（容器内）
+      BROKER_IP1: rocketmq-broker
+      # 限制 Broker JVM 内存，避免本地 Docker Desktop OOM
+      JAVA_OPT_EXT: "-server -Xms512m -Xmx512m -Xmn256m"
+      # 开发环境允许自动创建 Topic，避免后端首次发消息时报 NO_ROUTE
+      # autoCreateTopic 对 Remoting 协议客户端基本生效
+      TZ: Asia/Shanghai
+    ports:
+      - "${ROCKETMQ_BROKER_PORT}:10911"
+    volumes:
+      - ${DATA_DIR}/rocketmq:/home/rocketmq/store
+    depends_on:
+      rocketmq-namesrv:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/10911"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  # ---------------- RocketMQ Dashboard（独立 Web 控制台） ----------------
+  # 当前网络拉取不稳定，暂时注释；后续可用时取消注释即可。
+  # rocketmq-dashboard:
+  #   image: apacherocketmq/rocketmq-dashboard:latest
+  #   container_name: memory-rocketmq-dashboard
+  #   restart: unless-stopped
+  #   environment:
+  #     JAVA_OPTS: "-Drocketmq.namesrv.addr=rocketmq-namesrv:9876 -Dserver.port=8080"
+  #     TZ: Asia/Shanghai
+  #   ports:
+  #     - "${ROCKETMQ_DASHBOARD_PORT}:8080"
+  #   depends_on:
+  #     rocketmq-namesrv:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /' >&3 && timeout 2 cat <&3 | grep -qi 'RocketMQ'"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 15
+  #     start_period: 20s
+
   # ---------------- 后端 ----------------
   backend:
     build:
@@ -82,6 +150,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      rocketmq-broker:
+        condition: service_healthy
     environment:
       # MySQL（容器内 DNS）
       MYSQL_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
@@ -93,6 +163,9 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       # MinIO 连接：后端容器内通过 Docker DNS(minio:9000) 访问 MinIO 服务
       MINIO_URL: http://minio:9000
+      # Apache RocketMQ 连接：后端容器内通过 Docker DNS(rocketmq-namesrv:9876) 访问
+      ROCKETMQ_NAME_SERVER: rocketmq-namesrv:9876
+      ROCKETMQ_PRODUCER_GROUP: ${ROCKETMQ_PRODUCER_GROUP}
       # MinIO 公开地址：用于生成预签名 URL 的 host，必须与浏览器访问 MinIO 的 host 一致，
       # 否则签名校验失败(SignatureDoesNotMatch)。本地浏览器走 127.0.0.1:9002（docker 已映射），
       # 线上部署改为公网域名(如 https://minio.your-domain.com)。

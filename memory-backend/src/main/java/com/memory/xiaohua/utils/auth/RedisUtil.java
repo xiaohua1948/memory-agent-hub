@@ -137,6 +137,18 @@ public class RedisUtil {
     }
 
     /**
+     * 续期键的过期时间。
+     *
+     * @param key      键
+     * @param timeout  过期时间
+     * @param timeUnit 时间单位
+     * @return 是否设置成功（键不存在时返回 false）
+     */
+    public Boolean expire(String key, long timeout, TimeUnit timeUnit) {
+        return redisTemplate.expire(key, timeout, timeUnit);
+    }
+
+    /**
      * 设置哈希表中的字段值。
      *
      * @param key   键

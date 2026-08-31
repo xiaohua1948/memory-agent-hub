@@ -33,21 +33,26 @@ public class ImageMetadataParserUtil {
      * @Date: 2025/2/5,20:04:42
      */
     public ImageMetaData getImageMetadata(MultipartFile file) throws IOException, ImageProcessingException {
-        Metadata metadata;
-        metadata = ImageMetadataReader.readMetadata(file.getInputStream());
+        return getImageMetadata(file.getInputStream());
+    }
+
+    /**
+     * 从输入流解析图片元数据。
+     * 分片合并后文件已存于对象存储，可直接流式解析，无需回落到 MultipartFile。
+     */
+    public ImageMetaData getImageMetadata(InputStream inputStream) throws IOException, ImageProcessingException {
+        Metadata metadata = ImageMetadataReader.readMetadata(inputStream);
         ImageMetaData imageMetadata = new ImageMetaData();
         for (Directory directory : metadata.getDirectories()) {
             for (Tag tag : directory.getTags()) {
                 String tagName = tag.getTagName();
                 String description = tag.getDescription();
 
-             try {
-                 mapTagToField(imageMetadata, tagName, description);
-             }
-             catch (Exception e){
-                 log.warn("元数据解析异常 tag={}", tagName, e);
-             }
-
+                try {
+                    mapTagToField(imageMetadata, tagName, description);
+                } catch (Exception e) {
+                    log.warn("元数据解析异常 tag={}", tagName, e);
+                }
             }
         }
         return imageMetadata;

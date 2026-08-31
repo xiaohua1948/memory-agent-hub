@@ -122,15 +122,20 @@ public class VideoMetadataParserUtil {
      * @return 包含完整元数据的对象
      */
     public VideoMetaData GetVideoMetadata(MultipartFile multipartFile) {
-        VideoMetaData metadata = new VideoMetaData();
-        //隐藏log
-        avutil.av_log_set_level(avutil.AV_LOG_ERROR);
-        InputStream inputStream = null;
-        try {
-            inputStream = multipartFile.getInputStream();
+        try (InputStream inputStream = multipartFile.getInputStream()) {
+            return GetVideoMetadata(inputStream);
         } catch (IOException e) {
             throw new RuntimeException("视频流获取失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 从输入流解析视频元数据（分片合并后直接从对象存储流式解析）
+     */
+    public VideoMetaData GetVideoMetadata(InputStream inputStream) {
+        VideoMetaData metadata = new VideoMetaData();
+        //隐藏log
+        avutil.av_log_set_level(avutil.AV_LOG_ERROR);
         try (FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(inputStream)) {
             grabber.start();
             // 基础信息
@@ -154,9 +159,19 @@ public class VideoMetadataParserUtil {
     }
 
     public byte[] extractCover(MultipartFile multipartFile) {
-        try (InputStream inputStream = multipartFile.getInputStream();
-             FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(inputStream)) {
+        try (InputStream inputStream = multipartFile.getInputStream()) {
+            return extractCover(inputStream);
+        } catch (IOException e) {
+            throw new RuntimeException("视频流获取失败: " + e.getMessage(), e);
+        }
+    }
 
+    /**
+     * 从输入流抽取视频封面（分片合并后直接从对象存储流式处理）
+     */
+    public byte[] extractCover(InputStream inputStream) {
+        FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(inputStream);
+        try {
             // 1. 初始化视频解析
             grabber.start();
 
@@ -181,6 +196,12 @@ public class VideoMetadataParserUtil {
 
         } catch (Exception e) {
             throw new RuntimeException("视频封面提取失败: " + e.getMessage(), e);
+        } finally {
+            try {
+                grabber.close();
+            } catch (Exception ignore) {
+                // 关闭失败不影响已生成的封面
+            }
         }
     }
 
