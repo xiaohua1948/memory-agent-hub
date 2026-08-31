@@ -103,6 +103,14 @@ function statusOf(item: UploadItem): UploadStatus {
   return item.status;
 }
 
+/** 暂停时挂起，直到恢复或取消 */
+async function waitIfPaused(item: UploadItem): Promise<void> {
+  while (statusOf(item) === 'paused') {
+    await sleep(300);
+    if (statusOf(item) === 'canceled') return;
+  }
+}
+
 function fileKey(file: File): string {
   return `${file.name}::${file.size}::${file.lastModified}`;
 }
@@ -361,6 +369,9 @@ async function processItem(item: UploadItem): Promise<void> {
       item.md5 = await computeMd5(item);
     }
     if (item.status === 'canceled') return;
+    // 哈希或排队期间被暂停时，在此等待恢复
+    await waitIfPaused(item);
+    if (statusOf(item) === 'canceled') return;
 
     // 2. 预检：秒传 / 创建任务 / 获取续传进度
     const preCheckResponse = await preCheckUpload({
@@ -395,6 +406,10 @@ async function processItem(item: UploadItem): Promise<void> {
     item.inflightBytes.clear();
     updateProgress(item);
     persistProgress(item);
+
+    // 预检期间被暂停时，在此等待恢复
+    await waitIfPaused(item);
+    if (statusOf(item) === 'canceled') return;
 
     // 3. 上传分片
     item.status = 'uploading';
@@ -448,7 +463,11 @@ function startNext() {
 
   if (running >= FILE_CONCURRENCY) return;
 
-  const next = uploadState.list.find((item) => item.status === 'waiting');
+  // 只调度尚未被占用的等待项：processItem 在 preCheck 的 await 期间 status 仍是 'waiting'，
+  // 若不排除已持 controller 的项，会被 addFiles 的连续 startNext 重复驱动同一文件。
+  const next = uploadState.list.find(
+    (item) => item.status === 'waiting' && !controllers.has(item.id),
+  );
   if (!next) return;
 
   const controller = new AbortController();

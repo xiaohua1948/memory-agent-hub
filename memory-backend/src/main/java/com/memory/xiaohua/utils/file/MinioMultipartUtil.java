@@ -12,6 +12,7 @@ import io.minio.RemoveObjectsArgs;
 import io.minio.Result;
 import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
+import io.minio.errors.ErrorResponseException;
 import io.minio.messages.DeleteObject;
 import io.minio.messages.Item;
 import io.minio.messages.Part;
@@ -108,11 +109,26 @@ public class MinioMultipartUtil {
                         .build());
                 result.add(new Part(i, stat.etag()));
             } catch (Exception e) {
-                // 该分片尚未上传，跳过
+                if (!isNotFound(e)) {
+                    log.error("列出分片失败: uploadId={}, part={}", uploadId, i, e);
+                    throw new BusinessException(StatusCode.STORAGE_ERROR, "查询分片状态失败: " + e.getMessage());
+                }
+                // 对象不存在 = 该分片尚未上传，跳过
             }
         }
         result.sort(Comparator.comparingInt(Part::partNumber));
         return result;
+    }
+
+    /**
+     * 判断是否为"对象不存在"类异常，区分于存储服务故障/鉴权失败等真实错误。
+     */
+    private boolean isNotFound(Exception e) {
+        if (e instanceof ErrorResponseException error) {
+            String code = error.errorResponse().code();
+            return "NoSuchKey".equals(code) || "NoSuchObject".equals(code) || "NotFound".equals(code);
+        }
+        return false;
     }
 
     /**

@@ -34,6 +34,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import net.coobird.thumbnailator.Thumbnails;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -85,6 +86,9 @@ public class UploadServiceImpl implements UploadService {
 
     private static final String ALIVE_VALUE_SEPARATOR = "|";
 
+    /** 每任务已上传分片序号集合（仅进度展示，非权威数据源，权威以 MinIO listParts 为准） */
+    private static final String CHUNK_SET_KEY_PREFIX = "upload:chunks:";
+
     /** 秒传并发锁持有时间 */
     private static final long LOCK_SECONDS = 30L;
 
@@ -117,13 +121,6 @@ public class UploadServiceImpl implements UploadService {
     @Resource
     private RedisUtil redisUtil;
 
-    /**
-     * 媒体元数据暂存：fillXxxMeta 阶段计算并写入 file 主表字段，
-     * 但元数据从表（image_meta_data / video_meta_data）受外键约束，
-     * 必须等 file 主表落库后（persistFile）再插入，故先暂存于此。
-     */
-    private ImageMetaData pendingImageMeta;
-    private VideoMetaData pendingVideoMeta;
     @Resource
     private ObjectMapper objectMapper;
 
@@ -204,11 +201,15 @@ public class UploadServiceImpl implements UploadService {
             }
         }
 
-        // 2. 同一 MD5 已有进行中的任务 → 共享
+        // 2. 同一用户同一 MD5 已有进行中的任务 → 复用（跨用户不共享，避免越权复用他人任务）
         Object cachedUploadId = redisUtil.get(MD5_KEY_PREFIX + md5);
         if (cachedUploadId != null) {
             UploadTask shared = loadTask(String.valueOf(cachedUploadId));
-            if (shared != null && md5.equals(shared.getFileMd5()) && shared.getFileSize() == size) {
+            if (shared != null && shared.getUserId().equals(userId)
+                    && md5.equals(shared.getFileMd5()) && shared.getFileSize() == size) {
+                shared.setAlbumId(albumId);
+                saveTask(shared);
+                registerUserTask(userId, shared.getUploadId());
                 return shared;
             }
         }
@@ -275,17 +276,7 @@ public class UploadServiceImpl implements UploadService {
                 redisUtil.delete(MD5_KEY_PREFIX + md5);
                 return null;
             }
-            if (fileMapper.isUserHasFile(fileId, userId) == null) {
-                UserFileEntity userFile = new UserFileEntity();
-                userFile.setUserId(userId);
-                userFile.setFileId(fileId);
-                userFile.setIsDeleted(false);
-                userFile.setUploadTime(LocalDateTime.now());
-                userFileMapper.insert(userFile);
-            }
-            if (albumId != null && albumId != -1) {
-                albumService.addPictureToAlbum(Collections.singletonList(fileId), albumId, userId);
-            }
+            ensureUserFileAssociation(userId, fileId, albumId);
             return fileId;
         } finally {
             if (locked) {
@@ -298,7 +289,7 @@ public class UploadServiceImpl implements UploadService {
 
     @Override
     public UploadChunkVO uploadChunk(Long userId, String uploadId, int chunkIndex, MultipartFile chunk) {
-        UploadTask task = requireTask(uploadId);
+        UploadTask task = requireTask(userId, uploadId);
 
         if (chunk == null || chunk.isEmpty()) {
             throw new BusinessException(StatusCode.FILE_EMPTY, "分片内容为空");
@@ -321,12 +312,17 @@ public class UploadServiceImpl implements UploadService {
         // 续期：只要还在传分片，任务就不该过期
         touchTask(task);
 
-        List<Part> parts = minioMultipartUtil.listParts(task.getFileObjectName(), task.getMinioUploadId(), task.getTotalChunks());
+        // 进度计数走 Redis 集合，避免每次分片都全量 listParts（O(n²) 请求）；权威数据源仍是 MinIO
+        String chunkSetKey = CHUNK_SET_KEY_PREFIX + uploadId;
+        redisUtil.sAdd(chunkSetKey, chunkIndex);
+        redisUtil.expire(chunkSetKey, uploadConfig.getTaskTtlHours(), TimeUnit.HOURS);
+        long uploadedCount = redisUtil.sSize(chunkSetKey);
+
         UploadChunkVO vo = new UploadChunkVO();
         vo.setChunkIndex(chunkIndex);
-        vo.setUploadedCount(parts.size());
+        vo.setUploadedCount((int) uploadedCount);
         vo.setTotalChunks(task.getTotalChunks());
-        vo.setAllChunksDone(parts.size() == task.getTotalChunks());
+        vo.setAllChunksDone(uploadedCount == task.getTotalChunks());
         return vo;
     }
 
@@ -335,19 +331,19 @@ public class UploadServiceImpl implements UploadService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public UploadCompleteVO complete(Long userId, UploadCompleteRequest request, HttpServletRequest httpRequest) {
-        UploadTask task = requireTask(request.getUploadId());
-        if (!task.getFileMd5().equalsIgnoreCase(request.getMd5())) {
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "文件 MD5 与上传任务不匹配");
-        }
-
-        // 合并前再查一次秒传：并发上传同一文件时，另一线程可能已经完成合并
-        String instantFileId = instantUpload(userId, task.getFileMd5(), task.getAlbumId());
+        // 秒传兜底前置：并发上传同一文件时，另一请求可能已合并入库并清理了任务，
+        // 此时直接返回已入库文件，而不是抛"任务不存在"。
+        String instantFileId = instantUpload(userId, request.getMd5(), null);
         if (instantFileId != null) {
-            clearTask(task);
             UploadCompleteVO instantVo = new UploadCompleteVO();
             instantVo.setFileId(instantFileId);
             instantVo.setInstant(true);
             return instantVo;
+        }
+
+        UploadTask task = requireTask(userId, request.getUploadId());
+        if (!task.getFileMd5().equalsIgnoreCase(request.getMd5())) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "文件 MD5 与上传任务不匹配");
         }
 
         List<Part> parts = minioMultipartUtil.listParts(task.getFileObjectName(), task.getMinioUploadId(), task.getTotalChunks());
@@ -378,21 +374,25 @@ public class UploadServiceImpl implements UploadService {
             fileEntity.setFileObjectName(task.getFileObjectName());
             fileEntity.setThumbnailObjectName(task.getThumbnailObjectName());
 
+            ImageMetaData imageMeta = null;
+            VideoMetaData videoMeta = null;
             if ("image".equals(task.getCategory())) {
-                fillImageMeta(task, fileEntity, lastModifiedTime);
+                imageMeta = fillImageMeta(task, fileEntity, lastModifiedTime);
             } else {
-                fillVideoMeta(task, fileEntity, lastModifiedTime);
+                videoMeta = fillVideoMeta(task, fileEntity, lastModifiedTime);
             }
 
             fileEntity.setFileUrl(minioOSSUtil.getFileUrl(task.getFileObjectName()));
             fileEntity.setThumbnailUrl(minioOSSUtil.getFileUrl(task.getThumbnailObjectName()));
 
-            // 必须先落库 file 主表，再插 image_meta_data / video_meta_data（受外键约束）
-            persistFile(userId, task, fileEntity);
-            if ("image".equals(task.getCategory())) {
-                imageMetadataMapper.insert(pendingImageMeta);
-            } else {
-                videoMetaDataMapper.insert(pendingVideoMeta);
+            // 落库去重：并发 complete 对同一 MD5 文件会各自走到这里，用 MD5 锁串行化
+            // "检查是否已入库 + 落库"，命中的一方降级为秒传，避免 file 表出现同 MD5 重复行。
+            String existingFileId = persistWithDedup(userId, task, fileEntity, imageMeta, videoMeta);
+            if (existingFileId != null) {
+                UploadCompleteVO instantVo = new UploadCompleteVO();
+                instantVo.setFileId(existingFileId);
+                instantVo.setInstant(true);
+                return instantVo;
             }
 
             recordService.createRecordLog("上传照片:" + task.getOriginFileName(), 1, userId, httpRequest);
@@ -408,6 +408,11 @@ public class UploadServiceImpl implements UploadService {
             vo.setSize(fileEntity.getSize());
             vo.setInstant(false);
             return vo;
+        } catch (DuplicateKeyException e) {
+            // 并发下另一请求已把同一 MD5 文件落库（同 MD5 对象名相同、对象共享），
+            // 此处绝不能清理对象，否则会破坏对方已入库文件；提示重试，重试时秒传命中。
+            log.warn("并发落库冲突，文件已由其他请求入库: md5={}", task.getFileMd5());
+            throw new BusinessException(StatusCode.UPLOAD_TASK_NOT_FOUND, "文件已存在，请重新上传");
         } catch (Exception e) {
             log.error("上传合并后处理失败，清理已生成对象: {}", task.getFileObjectName(), e);
             safeDelete(task.getFileObjectName());
@@ -424,10 +429,14 @@ public class UploadServiceImpl implements UploadService {
         if (task == null) {
             return;
         }
+        if (!task.getUserId().equals(userId)) {
+            throw new BusinessException(StatusCode.NO_AUTH_ERROR, "无权操作该上传任务");
+        }
         minioMultipartUtil.abortMultipart(task.getFileObjectName(), task.getMinioUploadId());
         redisUtil.delete(TASK_KEY_PREFIX + uploadId);
         redisUtil.sRemove(USER_TASK_KEY_PREFIX + task.getUserId(), uploadId);
         redisUtil.hdel(ALIVE_TASK_KEY, uploadId);
+        redisUtil.delete(CHUNK_SET_KEY_PREFIX + uploadId);
         Object cachedUploadId = redisUtil.get(MD5_KEY_PREFIX + task.getFileMd5());
         if (cachedUploadId != null && uploadId.equals(String.valueOf(cachedUploadId))) {
             redisUtil.delete(MD5_KEY_PREFIX + task.getFileMd5());
@@ -466,7 +475,7 @@ public class UploadServiceImpl implements UploadService {
     /**
      * 图片分支：一次读出字节，复用给 EXIF 解析与缩略图压缩，避免重复网络读取。
      */
-    private void fillImageMeta(UploadTask task, FileEntity fileEntity, LocalDateTime lastModifiedTime) {
+    private ImageMetaData fillImageMeta(UploadTask task, FileEntity fileEntity, LocalDateTime lastModifiedTime) {
         byte[] bytes = minioOSSUtil.getFileBytes(task.getFileObjectName());
 
         ImageMetaData imageMetadata = new ImageMetaData();
@@ -500,13 +509,13 @@ public class UploadServiceImpl implements UploadService {
 
         // 外键依赖 file 主表，实际插入延迟到 persistFile 之后
         imageMetadata.setFileId(fileEntity.getFileId());
-        this.pendingImageMeta = imageMetadata;
+        return imageMetadata;
     }
 
     /**
      * 视频分支：全程流式处理，不把整个视频读进内存。
      */
-    private void fillVideoMeta(UploadTask task, FileEntity fileEntity, LocalDateTime lastModifiedTime) {
+    private VideoMetaData fillVideoMeta(UploadTask task, FileEntity fileEntity, LocalDateTime lastModifiedTime) {
         VideoMetaData videoMetadata = new VideoMetaData();
         try (InputStream in = minioOSSUtil.getObjectStream(task.getFileObjectName())) {
             videoMetadata = videoMetadataParserUtil.GetVideoMetadata(in);
@@ -552,7 +561,7 @@ public class UploadServiceImpl implements UploadService {
 
         // 外键依赖 file 主表，实际插入延迟到 persistFile 之后
         videoMetadata.setFileId(fileEntity.getFileId());
-        this.pendingVideoMeta = videoMetadata;
+        return videoMetadata;
     }
 
     private void persistFile(Long userId, UploadTask task, FileEntity fileEntity) {
@@ -573,6 +582,66 @@ public class UploadServiceImpl implements UploadService {
         if (task.getAlbumId() != null && task.getAlbumId() != -1) {
             albumService.addPictureToAlbum(Collections.singletonList(fileEntity.getFileId()),
                     task.getAlbumId(), userId);
+        }
+    }
+
+    /**
+     * 建立"已有文件 → 当前用户"的关联（user_file + 相册）。
+     * 秒传命中与并发落库降级时复用，避免同一段关联逻辑散落多处。
+     */
+    private void ensureUserFileAssociation(Long userId, String fileId, Long albumId) {
+        if (fileMapper.isUserHasFile(fileId, userId) == null) {
+            UserFileEntity userFile = new UserFileEntity();
+            userFile.setUserId(userId);
+            userFile.setFileId(fileId);
+            userFile.setIsDeleted(false);
+            userFile.setUploadTime(LocalDateTime.now());
+            userFileMapper.insert(userFile);
+        }
+        if (albumId != null && albumId != -1) {
+            albumService.addPictureToAlbum(Collections.singletonList(fileId), albumId, userId);
+        }
+    }
+
+    /**
+     * 落库去重：以文件 MD5 为键加锁，串行化"检查文件是否已入库 + 落库"，
+     * 避免并发 complete 对同一文件重复插入 file 行（同 MD5 对象名完全相同）。
+     *
+     * @return 返回非 null 表示文件已被并发请求落库，本次降级为秒传并返回该 fileId；
+     *         返回 null 表示本次负责落库。
+     */
+    private String persistWithDedup(Long userId, UploadTask task, FileEntity fileEntity,
+                                    ImageMetaData imageMeta, VideoMetaData videoMeta) {
+        String lockKey = LOCK_KEY_PREFIX + task.getFileMd5();
+        boolean locked = redisUtil.setIfAbsent(lockKey, "1", LOCK_SECONDS, TimeUnit.SECONDS);
+        if (!locked) {
+            // 已有并发请求持锁，等待其落库完成后再读取结果
+            for (int i = 0; i < 30 && redisUtil.exists(lockKey); i++) {
+                try {
+                    Thread.sleep(100L);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        try {
+            String existingFileId = fileMapper.isFileExist(task.getFileMd5());
+            if (existingFileId != null) {
+                ensureUserFileAssociation(userId, existingFileId, task.getAlbumId());
+                return existingFileId;
+            }
+            persistFile(userId, task, fileEntity);
+            if (imageMeta != null) {
+                imageMetadataMapper.insert(imageMeta);
+            } else if (videoMeta != null) {
+                videoMetaDataMapper.insert(videoMeta);
+            }
+            return null;
+        } finally {
+            if (locked) {
+                redisUtil.delete(lockKey);
+            }
         }
     }
 
@@ -621,13 +690,16 @@ public class UploadServiceImpl implements UploadService {
 
     // ---------- 任务存储 ----------
 
-    private UploadTask requireTask(String uploadId) {
+    private UploadTask requireTask(Long userId, String uploadId) {
         if (!StringUtils.hasText(uploadId)) {
             throw new BusinessException(StatusCode.UPLOAD_PARAM_MISSING, "缺少 uploadId");
         }
         UploadTask task = loadTask(uploadId);
         if (task == null) {
             throw new BusinessException(StatusCode.UPLOAD_TASK_NOT_FOUND, "上传任务不存在或已过期，请重新上传");
+        }
+        if (!task.getUserId().equals(userId)) {
+            throw new BusinessException(StatusCode.NO_AUTH_ERROR, "无权操作该上传任务");
         }
         return task;
     }
@@ -670,6 +742,7 @@ public class UploadServiceImpl implements UploadService {
         redisUtil.delete(TASK_KEY_PREFIX + task.getUploadId());
         redisUtil.sRemove(USER_TASK_KEY_PREFIX + task.getUserId(), task.getUploadId());
         redisUtil.hdel(ALIVE_TASK_KEY, task.getUploadId());
+        redisUtil.delete(CHUNK_SET_KEY_PREFIX + task.getUploadId());
         Object cachedUploadId = redisUtil.get(MD5_KEY_PREFIX + task.getFileMd5());
         if (cachedUploadId != null && task.getUploadId().equals(String.valueOf(cachedUploadId))) {
             redisUtil.delete(MD5_KEY_PREFIX + task.getFileMd5());

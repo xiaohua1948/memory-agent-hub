@@ -216,6 +216,8 @@ watch(
 		if (total > 0 && total === successCount) {
 			autoCloseTimer = setTimeout(() => {
 				showPanel.value = false;
+				// 关闭后清空已完成项，避免下次打开列表还显示
+				uploadManager.clearCompleted();
 				ElMessage.success(`${successCount} 个文件上传完成`);
 			}, 1000);
 		} else if (total > 0 && successCount + errorCount === total) {

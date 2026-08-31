@@ -13,6 +13,8 @@ import java.io.Serializable;
 @Data
 public class UploadTask implements Serializable {
 
+    private static final long serialVersionUID = 1L;
+
     /** 业务上传任务 ID */
     private String uploadId;
 
