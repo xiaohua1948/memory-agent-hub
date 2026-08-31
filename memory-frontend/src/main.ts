@@ -13,3 +13,4 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 }
 app.mount('#app')
 import 'element-plus/dist/index.css'
+import './styles/element-fix.css'

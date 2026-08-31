@@ -30,7 +30,9 @@
 
 					<div class="upload-item-body">
 						<div class="cell cell-icon">
-							<i-catppuccin:image v-if="item.category === 'image'" class="file-icon" />
+							<img v-if="item.thumbnail" :src="item.thumbnail" class="file-thumb" alt=""
+								@click="openPreview(item)" />
+							<i-catppuccin:image v-else-if="item.category === 'image'" class="file-icon" />
 							<i-catppuccin:video v-else class="file-icon" />
 						</div>
 
@@ -69,6 +71,14 @@
 				</div>
 			</div>
 		</div>
+
+		<el-image-viewer v-if="previewVisible" :url-list="[previewUrl]" :teleported="true"
+			@close="previewVisible = false" />
+
+		<el-dialog v-model="videoPreviewVisible" :title="videoPreviewName" width="720px" destroy-on-close
+			@closed="closeVideoPreview">
+			<video v-if="videoPreviewUrl" :src="videoPreviewUrl" controls autoplay class="video-preview" />
+		</el-dialog>
 	</div>
 </template>
 
@@ -81,12 +91,16 @@ import {
 	uploadManager,
 	uploadState,
 	type UploadItem,
-	type UploadStatus,
 } from '@/utils/upload/uploader';
 
 const showPanel = ref(false);
 const showDetail = ref(true);
 const albumId = ref(-1);
+const previewVisible = ref(false);
+const previewUrl = ref('');
+const videoPreviewVisible = ref(false);
+const videoPreviewUrl = ref('');
+const videoPreviewName = ref('');
 
 const imageInputRef = ref<HTMLInputElement>();
 const folderInputRef = ref<HTMLInputElement>();
@@ -242,6 +256,25 @@ function clearCompleted() {
 	uploadManager.clearCompleted();
 }
 
+function openPreview(item: UploadItem) {
+	if (!item.thumbnail) return;
+	if (item.category === 'video') {
+		videoPreviewName.value = item.name;
+		videoPreviewUrl.value = URL.createObjectURL(item.file);
+		videoPreviewVisible.value = true;
+		return;
+	}
+	previewUrl.value = item.thumbnail;
+	previewVisible.value = true;
+}
+
+function closeVideoPreview() {
+	if (videoPreviewUrl.value) {
+		URL.revokeObjectURL(videoPreviewUrl.value);
+		videoPreviewUrl.value = '';
+	}
+}
+
 async function closePanel() {
 	if (uploadManager.hasActive()) {
 		try {
@@ -263,12 +296,7 @@ async function closePanel() {
 		clearTimeout(autoCloseTimer);
 		autoCloseTimer = null;
 	}
-	const terminalStatuses: UploadStatus[] = ['success', 'error', 'canceled'];
-	for (let i = uploadState.list.length - 1; i >= 0; i--) {
-		if (terminalStatuses.includes(uploadState.list[i].status)) {
-			uploadState.list.splice(i, 1);
-		}
-	}
+	uploadManager.clearFinished();
 	showPanel.value = false;
 }
 </script>
@@ -372,6 +400,22 @@ async function closePanel() {
 
 .file-icon {
 	font-size: 34px;
+}
+
+.file-thumb {
+	display: block;
+	width: 34px;
+	height: 34px;
+	object-fit: cover;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.video-preview {
+	display: block;
+	width: 100%;
+	max-height: 60vh;
+	background: #000;
 }
 
 .cell-name {

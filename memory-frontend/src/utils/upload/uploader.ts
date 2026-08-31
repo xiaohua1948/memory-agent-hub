@@ -67,6 +67,8 @@ export interface UploadItem {
   instant: boolean;
   fileId: string;
   category: 'image' | 'video' | 'other';
+  /** 列表缩略图：图片为 blob URL，视频为抓帧 dataURL */
+  thumbnail: string;
 }
 
 interface PersistedRecord {
@@ -125,6 +127,79 @@ function detectCategory(name: string): UploadItem['category'] {
   if (['.png', '.jpg', '.jpeg', '.gif', '.bmp'].includes(ext)) return 'image';
   if (['.mp4', '.rmvb', '.mkv', '.wmv', '.flv'].includes(ext)) return 'video';
   return 'other';
+}
+
+/** 抓取视频首帧，返回 JPEG dataURL；失败返回空串 */
+function captureVideoFrame(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.src = url;
+
+    let settled = false;
+    const finish = (dataUrl: string) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      resolve(dataUrl);
+    };
+
+    const draw = () => {
+      const canvas = document.createElement('canvas');
+      const width = video.videoWidth || 320;
+      const height = video.videoHeight || 180;
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      let dataUrl = '';
+      if (ctx) {
+        try {
+          ctx.drawImage(video, 0, 0, width, height);
+          dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        } catch {
+          dataUrl = '';
+        }
+      }
+      finish(dataUrl);
+    };
+
+    video.onloadeddata = () => {
+      // 0 时刻常是黑帧，跳到 0.1s 附近再抓；seeked 未触发时超时兜底直接抓当前帧
+      window.setTimeout(() => {
+        if (!settled) draw();
+      }, 800);
+      const target = Number.isFinite(video.duration) && video.duration > 0
+        ? Math.min(0.1, video.duration)
+        : 0.1;
+      video.currentTime = target;
+    };
+    video.onseeked = draw;
+    video.onerror = () => finish('');
+  });
+}
+
+function generateThumbnail(item: UploadItem): void {
+  if (item.category === 'image') {
+    item.thumbnail = URL.createObjectURL(item.file);
+  } else if (item.category === 'video') {
+    void captureVideoFrame(item.file).then((dataUrl) => {
+      // 抓帧期间项可能已被移除，此时丢弃结果
+      if (uploadState.list.includes(item)) {
+        item.thumbnail = dataUrl;
+      }
+    });
+  }
+}
+
+/** 释放缩略图占用的 blob URL，项从列表移除前调用 */
+function disposeThumbnail(item: UploadItem): void {
+  if (item.thumbnail.startsWith('blob:')) {
+    URL.revokeObjectURL(item.thumbnail);
+  }
+  item.thumbnail = '';
 }
 
 function readPersisted(): PersistedMap {
@@ -504,6 +579,7 @@ function createItem(file: File, albumId: number): UploadItem {
     instant: false,
     fileId: '',
     category: detectCategory(file.name),
+    thumbnail: '',
   };
 }
 
@@ -559,6 +635,7 @@ export const uploadManager = {
 
     if (accepted.length > 0) {
       uploadState.list.push(...accepted);
+      accepted.forEach((item) => generateThumbnail(item));
       for (let i = 0; i < FILE_CONCURRENCY; i += 1) {
         startNext();
       }
@@ -603,6 +680,7 @@ export const uploadManager = {
     }
     const index = uploadState.list.findIndex((i) => i.id === item.id);
     if (index >= 0) {
+      disposeThumbnail(item);
       uploadState.list.splice(index, 1);
     }
   },
@@ -621,7 +699,25 @@ export const uploadManager = {
     );
     completed.forEach((item) => {
       const index = uploadState.list.findIndex((i) => i.id === item.id);
-      if (index >= 0) uploadState.list.splice(index, 1);
+      if (index >= 0) {
+        disposeThumbnail(item);
+        uploadState.list.splice(index, 1);
+      }
+    });
+  },
+
+  /** 清空所有已结束（成功/失败/取消）项，关闭面板时调用 */
+  clearFinished() {
+    const finished = uploadState.list.filter(
+      (item) =>
+        item.status === 'success' || item.status === 'error' || item.status === 'canceled',
+    );
+    finished.forEach((item) => {
+      const index = uploadState.list.findIndex((i) => i.id === item.id);
+      if (index >= 0) {
+        disposeThumbnail(item);
+        uploadState.list.splice(index, 1);
+      }
     });
   },
 

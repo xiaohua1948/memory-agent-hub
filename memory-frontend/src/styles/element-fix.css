@@ -1,0 +1,6 @@
+/* 图片预览（el-image-viewer）统一限制为屏幕一半大小。
+   组件内部给 img 写了内联 max-width/max-height:100%，内联优先级高于普通规则，需 !important 覆盖。 */
+.el-image-viewer__img {
+  max-width: 75vw !important;
+  max-height: 75vh !important;
+}
