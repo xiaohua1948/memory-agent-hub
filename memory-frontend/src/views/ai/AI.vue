@@ -109,7 +109,7 @@
         </div>
 
         <el-image-viewer :url-list="previewSrcList" :teleported="true" :initial-index="currentImageIndex"
-            v-if="isPreviewImage" @close="() => { console.log(1); isPreviewImage = false }">
+            v-if="isPreviewImage" @close="() => { isPreviewImage = false }">
         </el-image-viewer>
 
         <el-dialog class="select-picture-diag" width="90%" v-model="dialogPicutureVisible" title="选择照片"
@@ -182,11 +182,9 @@ const dialogPicutureVisible = ref(false);
 const activeName = ref('picture');
 
 const handleTabClick = (tab: any) => {
-    console.log('切换标签页:', tab.paneName);
 };
 
 const handleTagChange = (row: API.SelectPicture) => {
-    console.log('选中的标签:', row.selectedTagIndex);
 };
 const setAllPictureTag = () => {
 
@@ -284,7 +282,6 @@ const getOnePictureTag = async (row: API.SelectPicture, index: number) => {
         item.selectedTagIndex = 0;
 
     } catch (error) {
-        console.error('识别失败:', error);
         ElMessage.error("图片 " + item.originFileName + "识别失败");
     } finally {
         loadingStates.value[index] = false;
@@ -317,7 +314,6 @@ const startGetPictureTag = async () => {
             item.selectedTagIndex = 0;
 
         } catch (error) {
-            console.error('识别失败:', error);
             ElMessage.error("图片 " + item.originFileName + "识别失败");
         } finally {
             loadingStates.value[i] = false;

@@ -231,7 +231,6 @@ const saveContainer = async () => {
 
     loading.close()
   } catch (error) {
-    console.error('保存失败:', error)
     ElMessage.error('图片生成失败，请检查控制台')
   }
 }
@@ -252,7 +251,6 @@ const fetchData = async () => {
       initCharts()
     }
   } catch (error) {
-    console.error('数据获取失败:', error)
   }
 }
 

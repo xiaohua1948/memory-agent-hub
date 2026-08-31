@@ -11,6 +11,11 @@ ARG REGISTRY=docker.1ms.run
 FROM ${REGISTRY}/node:22-alpine AS builder
 WORKDIR /build
 
+# 构建时注入 VITE_BASE_URL（默认空，前端兜底为 /devApi）
+# 用法：docker compose build --build-arg VITE_BASE_URL=https://api.example.com frontend
+ARG VITE_BASE_URL=
+ENV VITE_BASE_URL=${VITE_BASE_URL}
+
 COPY memory-frontend/package.json memory-frontend/package-lock.json ./
 RUN npm install --registry=https://registry.npmmirror.com --no-audit --no-fund
 

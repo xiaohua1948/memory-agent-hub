@@ -121,7 +121,6 @@ const fetchLocationData = async () => {
             updateStatistics()
         }
     } catch (error) {
-        console.error('获取地理位置数据失败:', error)
     }
 }
 

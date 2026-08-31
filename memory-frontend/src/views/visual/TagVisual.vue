@@ -66,7 +66,6 @@ const saveContainer = async () => {
     link.click();
     document.body.removeChild(link);
   } catch (error) {
-    console.error('截图失败:', error);
     ElMessage.error('保存失败，请重试');
   }
 }
@@ -84,7 +83,6 @@ const fetchTags = async () => {
     }
     return []
   } catch (error) {
-    console.error('获取标签数据失败:', error)
     return []
   }
 }

@@ -140,7 +140,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock, Message } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { getUserInfo } from '@/api/user/index'
-import { storage } from '@/utils/storage';
+import { storage, STORAGE_KEYS } from '@/utils/storage';
 import { updatePassWord, updateEmail, getEmailCode } from '@/api/user/auth'
 // 新增响应式数据
 const logoutDialogVisible = ref(false)
@@ -151,20 +151,7 @@ const logoutForm = reactive({
 })
 const router = useRouter()
 
-const userInfo = ref(<API.UserInfo>{
-    userId: 1000000001,
-    userName: "小华同学",
-    account: "xiaohua",
-    email: "1609048001@qq.com",
-    createTime: "2025-02-20T15:18:26",
-    updateTime: "2025-03-04T22:31:21",
-    profile: "小华爱编程",
-    avatarUrl: "http://127.0.0.1:9000/pictures//avatar/1000000001/1000000001.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=nbOVDrriWWUzwqzoeSuW%2F20250304%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250304T143121Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=45944478663dcbcd0dc86e95a91312ee598384d012d4872cdad548f35fd64b8a",
-    totalSpace: 21474836480,
-    usedSpace: 32988616,
-    accountStatus: "svip",
-    membershipDays: 100000
-})
+const userInfo = ref<API.UserInfo | null>(null)
 
 
 const selectUserInfo = async () => {
@@ -178,7 +165,7 @@ const selectUserInfo = async () => {
     }
 }
 onMounted(() => {
-    const Info = storage.get<API.UserInfo>('USER_INFO');
+    const Info = storage.get<API.UserInfo>(STORAGE_KEYS.USER_INFO);
     if (Info) {
         userInfo.value = Info;
     }
@@ -363,7 +350,6 @@ const handleChangePassword = async () => {
         passwordDialogVisible.value = false
 
     } catch (error) {
-        console.error('密码修改失败:', error)
     }
 }
 
@@ -386,7 +372,6 @@ const handleChangeEmail = async () => {
         emailDialogVisible.value = false
 
     } catch (error) {
-        console.error('邮箱更换失败:', error)
     }
 }
 

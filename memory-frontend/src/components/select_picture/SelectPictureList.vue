@@ -176,7 +176,6 @@ const addSelectPicture = () => {
     if (selectPictureList.value.length > 0) {
         $bus.emit('addSelectPicture', selectPictureList.value);
     } else {
-        console.warn('未选择任何有效文件');
     }
 
     closecheckedMenu();

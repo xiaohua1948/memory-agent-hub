@@ -2,7 +2,7 @@
  * 公共配置
  */
 const requestPublicConfig = {
-    baseUrl: import.meta.env.MODE === "development" ? "/devApi" : "/mockApi",
+    baseUrl: import.meta.env.VITE_BASE_URL || "/devApi",
     timeout: 100000,
     headers: {
       Accept: 'application/json, text/plain, */*',

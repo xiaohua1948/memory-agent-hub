@@ -105,16 +105,39 @@ public class MinioOSSUtil {
 
 
     /**
+     * 构建用于生成预签名 URL 的客户端。
+     *
+     * 两个关键点：
+     * 1) endpoint 必须是浏览器可达地址(public-url)，因为签名与 Host 绑定，用内网地址(minio:9000)
+     *    生成再字符串替换 host 会破坏签名(SignatureDoesNotMatch)；
+     * 2) 必须显式指定 region，否则 SDK 会先发 GetBucketLocation 探测 region，
+     *    而该 endpoint 是浏览器地址，容器内不可达 → Connection refused（上传接口 500 的根因）。
+     *    指定 region 后签名纯本地计算，不会真的发起连接。
+     */
+    private MinioClient buildSignClient() {
+        String publicUrl = configuration.getPublicUrl();
+        MinioClient.Builder builder = MinioClient.builder()
+                .region(configuration.getRegion())
+                .credentials(configuration.getAccessKey(), configuration.getSecretKey());
+        if (publicUrl != null && !publicUrl.isBlank()) {
+            builder.endpoint(publicUrl);
+        } else {
+            builder.endpoint(configuration.getUrl());
+        }
+        return builder.build();
+    }
+
+    /**
      * 获取文件访问地址（有过期时间）
      */
     public String getExpireFileUrl(String objectName, int time, TimeUnit timeUnit) {
         try {
-            String url = minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+            MinioClient signClient = buildSignClient();
+            return signClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
                     .method(Method.GET)
                     .bucket(configuration.getBucketName())
                     .object(objectName)
                     .expiry(time, timeUnit).build());
-            return rewriteUrl(url);
         }  catch (Exception e) {
             throw new RuntimeException("获取文件Url错误: "+objectName + e.getMessage(), e);
         }
@@ -122,16 +145,21 @@ public class MinioOSSUtil {
 
     /**
      * 获取文件访问地址
+     *
+     * 说明：预签名 URL 的签名与生成时使用的 endpoint(host) 绑定，浏览器访问的 host 必须与之一致，
+     * 否则 MinIO 返回 SignatureDoesNotMatch。因此生成签名时应直接使用"浏览器可达地址"(publicUrl)
+     * 作为 endpoint 构建专用 client，而不是先按内部 endpoint(minio:9000) 生成再字符串替换 host
+     * （字符串替换会破坏签名）。签名 client 需显式指定 region 才会纯本地计算签名（见 buildSignClient）。
      */
     public String getFileUrl(String objectName) {
         try {
-            String url = minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+            MinioClient signClient = buildSignClient();
+            return signClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
                     .method(Method.GET)
                     .bucket(configuration.getBucketName())
                     .object(objectName)
                     .build()
             );
-            return rewriteUrl(url);
         }  catch (Exception e) {
             throw new RuntimeException("获取文件Url错误: "+objectName + e.getMessage(), e);
         }
@@ -140,16 +168,6 @@ public class MinioOSSUtil {
     /**
      * 若配置了 public-url（浏览器可达地址），则将预签名 URL 中的 endpoint 替换为 public-url
      */
-    private String rewriteUrl(String url) {
-        String publicUrl = configuration.getPublicUrl();
-        String endpoint = configuration.getUrl();
-        if (publicUrl != null && !publicUrl.isBlank()
-                && endpoint != null && !endpoint.isBlank()
-                && url.contains(endpoint)) {
-            return url.replace(endpoint, publicUrl);
-        }
-        return url;
-    }
     public byte[] getFileBytes(String objectName){
         // 2.8 修复：用 try-with-resources 确保流关闭
         try (InputStream inputStream = minioClient.getObject(

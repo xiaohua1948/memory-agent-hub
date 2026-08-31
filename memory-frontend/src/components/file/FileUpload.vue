@@ -96,7 +96,7 @@
 													<i-material-symbols:pause style="font-size: 18px;" />
 												</el-button>
 												<el-button v-else color="#979797" link
-													@click="() => { console.log(uploadfiles); uploadfiles[index].resume(); }">
+													@click="() => { uploadfiles[index].resume(); }">
 													<i-material-symbols:play-arrow style="font-size: 18px;" />
 												</el-button>
 											</div>
@@ -159,7 +159,6 @@ const options = reactive({
 			return true;
 		}
 		if (resp.message == "exist") {
-			console.log('文件已存在，秒传');
 			return true;
 		}
 		return false;
@@ -260,7 +259,7 @@ function onUploadComplete() {
 
 }
 function onFileError(rootFile, file, response, chunk) {
-	console.log('上传完成后异常信息：' + response);
+	ElMessage.error('上传失败：' + response);
 }
 
 /**
@@ -272,8 +271,6 @@ function computeMD5(file) {
 	file.pause();
 	//单个文件的大小限制2G
 	let fileSizeLimit = 2 * 1024 * 1024 * 1024;
-	console.log('文件大小：' + file.size);
-	console.log('限制大小：' + fileSizeLimit);
 	if (file.size > fileSizeLimit) {
 		file.cancel();
 	}
@@ -300,10 +297,6 @@ function computeMD5(file) {
 			let md5 = spark.end();
 			file.uniqueIdentifier = md5;
 			file.resume();
-			console.log(
-				`MD5计算完毕：${file.name} \nMD5：${md5} \n分片：${chunks} 大小:${file.size
-				} 用时：${new Date().getTime() - time} ms`
-			);
 		}
 	};
 	fileReader.onerror = function () {
@@ -316,7 +309,6 @@ function computeMD5(file) {
 
 		fileReader.readAsArrayBuffer(blobSlice.call(file.file, start, end));
 		currentChunk++;
-		console.log('计算第' + currentChunk + '块');
 	}
 }
 
@@ -355,7 +347,7 @@ const uploadClose = () => {
 }
 
 function error(msg) {
-	console.log(msg, 'msg');
+	ElMessage.error(msg);
 }
 </script>
 

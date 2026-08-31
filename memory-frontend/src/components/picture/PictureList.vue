@@ -421,7 +421,6 @@ const clickDownloadPicture = async () => {
 
     } catch (error) {
         ElMessage.error('下载失败');
-        console.error('下载错误:', error);
     }
 }
 
@@ -501,7 +500,6 @@ const confirmDeletePicture = async () => {
     //复选框选中,或者单个图片请求数据
     const checkfileIds = currentDialogChecked.value ? checkedImages.value.flat() : [currentFileId.value];
     dialogVisible.value = false;
-    console.log(checkfileIds);
     const res = await deleteFileByIds({ fileIds: checkfileIds })
     if (res.code == 200) {
         $bus.emit('deletePictureSuceess');

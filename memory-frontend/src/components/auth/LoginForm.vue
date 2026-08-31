@@ -130,7 +130,6 @@ const sendCode = async () => {
         })
 
     } catch (error) {
-        console.error('验证码发送失败:', error)
     }
 }
 
@@ -184,7 +183,6 @@ const handleSubmit = async () => {
         }
 
     } catch (error) {
-        console.error('登录失败:', error)
         loading.value = false
     } 
 }

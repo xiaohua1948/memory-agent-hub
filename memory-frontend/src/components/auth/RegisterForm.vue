@@ -50,11 +50,12 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { FormInstance, FormRules } from 'element-plus'
 import { accountRegister, getEmailCode } from '@/api/user/auth'
 import $bus from '@/utils/bus.ts'
+import { STORAGE_KEYS } from '@/utils/storage'
 interface Props {
     showfoot: boolean,
 }
@@ -122,20 +123,25 @@ const rules = reactive<FormRules>({
     ]
 })
 
+// 统一管理的定时器句柄，避免组件重建时旧定时器泄漏
+let countdownTimer: ReturnType<typeof setInterval> | null = null
+const startCountdown = () => {
+    if (countdownTimer) clearInterval(countdownTimer)
+    countdownTimer = setInterval(() => {
+        codeCountdown.value--
+        if (codeCountdown.value <= 0 && countdownTimer) {
+            clearInterval(countdownTimer)
+            countdownTimer = null
+        }
+    }, 1000)
+}
+
 const sendCode = async () => {
     try {
         await registerForm.value?.validateField('email')
 
         codeCountdown.value = 60
-        localStorage.setItem('codeCountdown', codeCountdown.value.toString())
-        const timer = setInterval(() => {
-            codeCountdown.value--;
-            localStorage.setItem('codeCountdown', codeCountdown.value.toString());
-            if (codeCountdown.value <= 0) {
-                clearInterval(timer)
-                localStorage.removeItem('codeCountdown')
-            }
-        }, 1000)
+        startCountdown()
 
         getEmailCode(formData).then((resp) => {
             if (resp.code == 200) {
@@ -153,22 +159,23 @@ const sendCode = async () => {
         })
 
     } catch (error) {
-        console.error('验证码发送失败:', error)
     }
 }
 
 onMounted(() => {
-    const storedCountdown = localStorage.getItem('codeCountdown')
-    if (storedCountdown) {
-        codeCountdown.value = parseInt(storedCountdown)
-        const timer = setInterval(() => {
-            codeCountdown.value--;
-            localStorage.setItem('codeCountdown', codeCountdown.value.toString());
-            if (codeCountdown.value <= 0) {
-                clearInterval(timer)
-                localStorage.removeItem('codeCountdown')
-            }
-        }, 1000)
+    // 仅读取一次缓存值用于显示，不再持久化倒计时（避免多标签页错乱与绕过）
+    const stored = parseInt(localStorage.getItem(STORAGE_KEYS.CODE_COUNTDOWN) || '0')
+    if (stored > 0) {
+        codeCountdown.value = stored
+        startCountdown()
+    }
+    localStorage.removeItem(STORAGE_KEYS.CODE_COUNTDOWN)
+})
+
+onUnmounted(() => {
+    if (countdownTimer) {
+        clearInterval(countdownTimer)
+        countdownTimer = null
     }
 })
 
@@ -204,7 +211,6 @@ const handleSubmit = async () => {
 
 
     } catch (error) {
-        console.error('注册失败:', error)
         ElMessage.error('注册失败，请检查表单')
     } finally {
         loading.value = false

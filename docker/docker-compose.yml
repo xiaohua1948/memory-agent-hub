@@ -91,10 +91,11 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-      # MinIO：预签名 URL 的 host 必须与浏览器访问的 host 一致，否则签名校验失败导致图片打不开。
-      # 后端、前端统一使用 host.docker.internal:9002（Docker Desktop 默认可解析为宿主），
-      # 使签名 host 与浏览器访问 host 一致。
-      MINIO_URL: http://host.docker.internal:${MINIO_API_PORT}
+      # MinIO 连接：后端容器内通过 Docker DNS(minio:9000) 访问 MinIO 服务
+      MINIO_URL: http://minio:9000
+      # MinIO 公开地址：用于生成预签名 URL 的 host，必须与浏览器访问 MinIO 的 host 一致，
+      # 否则签名校验失败(SignatureDoesNotMatch)。本地浏览器走 127.0.0.1:9002（docker 已映射），
+      # 线上部署改为公网域名(如 https://minio.your-domain.com)。
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
@@ -113,6 +114,8 @@ services:
     build:
       context: ..
       dockerfile: docker/frontend/Dockerfile
+      args:
+        VITE_BASE_URL: ${FRONTEND_API_URL}
     container_name: memory-frontend
     restart: unless-stopped
     depends_on:

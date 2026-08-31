@@ -8,7 +8,7 @@
             <el-input v-if="showSearh" v-model="input" placeholder="搜索图片" :suffix-icon="Search" class="search-input"
                 @focus="router.push('/search')" />
 
-            <div class="user-info" v-if="isLogin">
+            <div class="user-info" v-if="isLogin && userInfo">
                 <el-avatar class="user-avatar" :src="userInfo.avatarUrl" />
 
                 <el-dropdown trigger="hover" popper-class="user-dropdown">
@@ -82,13 +82,13 @@ import { useRouter } from 'vue-router'
 import { accountLogout } from '@/api/user/auth'
 import { getUserInfo } from '@/api/user/index'
 import $bus from '@/utils/bus.ts'
-import { storage } from '@/utils/storage';
+import { storage, STORAGE_KEYS } from '@/utils/storage';
 interface Props {
     showSearh: boolean
 }
 const props = defineProps<Props>()
 
-const isLogin = ref(true);
+const isLogin = ref(false);
 const router = useRouter()
 const input = ref('')
 
@@ -100,23 +100,10 @@ const customColors = [
     { color: '#e6f0ff', percentage: 100 }
 ]
 
-const userInfo = ref(<API.UserInfo>{
-    userId: 1000000001,
-    userName: "小华同学",
-    account: "xiaohua",
-    email: "1609048001@qq.com",
-    createTime: "2025-02-20T15:18:26",
-    updateTime: "2025-03-04T22:31:21",
-    profile: "小华爱编程",
-    avatarUrl: "http://127.0.0.1:9000/pictures//avatar/1000000001/1000000001.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=nbOVDrriWWUzwqzoeSuW%2F20250304%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250304T143121Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=45944478663dcbcd0dc86e95a91312ee598384d012d4872cdad548f35fd64b8a",
-    totalSpace: 21474836480,
-    usedSpace: 32988616,
-    accountStatus: "svip",
-    membershipDays: 100000
-})
+const userInfo = ref<API.UserInfo | null>(null)
 const storagePercentage = computed(() =>
-    Math.round((userInfo.value.usedSpace / userInfo.value.totalSpace)
-    ))
+    userInfo.value ? Math.round((userInfo.value.usedSpace / userInfo.value.totalSpace)) : 0
+)
 const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 B'
 
@@ -157,7 +144,7 @@ const checkLogin = async () => {
     if (token) {
         const res = await getUserInfo();
         if (res.code == 200) {
-            storage.set('USER_INFO', res.data);
+            storage.set(STORAGE_KEYS.USER_INFO, res.data);
             userInfo.value = res.data;
             isLogin.value = true;
         }
@@ -188,14 +175,13 @@ const handleLogout = async () => {
 
     }
     catch (error) {
-        console.error('退出登录失败:', error)
     }
     finally {
         setTimeout(() => {
             router.push('/login');
         }, 500);
-        localStorage.removeItem('token');
-        storage.remove('USER_INFO');
+        localStorage.removeItem(STORAGE_KEYS.TOKEN);
+        storage.remove(STORAGE_KEYS.USER_INFO);
     }
 }
 const getUserLevelText = (level: string) => {

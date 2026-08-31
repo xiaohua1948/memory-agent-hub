@@ -392,7 +392,6 @@ const clickDownloadPicture = async () => {
 
     } catch (error) {
         ElMessage.error('下载失败');
-        console.error('下载错误:', error);
     }
 }
 

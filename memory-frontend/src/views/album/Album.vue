@@ -350,7 +350,6 @@ const handleCheckAll = () => {
     else {
         // 执行全选
         checkedAlbums.value = checkedAllAlbums.value;
-        console.log(checkedAlbums.value);
         isCheckAll.value = true;
         isCheckAllText.value = '取消勾选';
         toggleCheckUI(checkedAlbums.value.length > 0);

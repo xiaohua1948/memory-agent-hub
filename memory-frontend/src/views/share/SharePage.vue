@@ -173,7 +173,6 @@ const copyShareUrl = async () => {
             throw new Error('复制失败');
         }
     } catch (err) {
-        console.log(err);
     }
 };
 const showBus = () => {
