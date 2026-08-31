@@ -857,13 +857,13 @@ const isImageChecked = (imageId: string) => {
 
 
 /* 自定义element checkBox样式 */
-
-
+/* !important：build 后 element-plus 按需样式 chunk（.el-checkbox--large 的 14×14 规则，特异性同为 0,3,0）
+   会在本组件 CSS 之后注入并反超 18×18，容器缩回 14×14 导致对号偏移，故加 !important 固定尺寸 */
 :deep(.el-checkbox .el-checkbox__inner) {
     z-index: 3;
     border-radius: 50%;
-    width: 18px;
-    height: 18px;
+    width: 18px !important;
+    height: 18px !important;
 }
 
 
