@@ -67,9 +67,9 @@
               <img v-if="i === index && isImage" ref="media" :key="url" :src="url" :style="mediaStyle"
                 class="el-image-viewer__img" @load="handleMediaLoad" @error="handleMediaError"
                 @mousedown="handleMouseDown" />
-              <video controls v-if="i === index && isVideo" ref="media" :key="url" :src="url" :style="mediaStyle"
-                class="el-image-viewer__img" @load="handleMediaLoad" @error="handleMediaError"
-                @mousedown="handleMouseDown"></video>
+              <video v-if="i === index && isVideo" ref="media" :key="url" :src="url" :style="mediaStyle"
+                class="el-image-viewer__img" controls playsinline preload="metadata" autoplay
+                @loadeddata="handleMediaLoad" @error="handleMediaError"></video>
             </template>
           </div>
 
@@ -390,6 +390,7 @@ const mediaStyle = computed(() => {
   return style
 })
 function hide() {
+  media.value?.pause?.()
   deviceSupportUninstall()
   emits('close')
 }
@@ -461,6 +462,17 @@ function deviceSupportUninstall() {
 
 function handleMediaLoad() {
   loading.value = false
+  // 媒体加载完成后自动播放（针对 autoplay 被浏览器策略拦截的情况做兜底）
+  playMedia()
+}
+
+function playMedia() {
+  const $media = media.value
+  if ($media && typeof $media.play === 'function') {
+    $media.play().catch(() => {
+      // 浏览器自动播放策略拦截（如未与页面交互），忽略即可，用户可手动点击播放
+    })
+  }
 }
 
 function handleMediaError(e) {
@@ -468,6 +480,8 @@ function handleMediaError(e) {
 }
 
 function handleMouseDown(e) {
+  // 视频使用原生播放控件，不参与图片拖拽逻辑，避免 preventDefault 阻止播放/暂停按钮
+  if (e.target instanceof HTMLVideoElement || e.target.closest?.('video')) return
   if (loading.value || e.button !== 0) return
 
   const { offsetX, offsetY } = transform.value
@@ -584,9 +598,11 @@ function handleActions(action, options = {}) {
 watch(currentMedia, () => {
   nextTick(() => {
     const $media = media.value
-    if (!$media.complete) {
+    if ($media && !$media.complete) {
       loading.value = true
     }
+    // 切换媒体后自动播放（img 无 play 方法，自动跳过）
+    playMedia()
   })
 })
 
@@ -693,6 +709,12 @@ const formatDuration = (seconds) => {
 .el-image-viewer__mask {
   opacity: 0;
   background-color: rgba(0, 0, 0, 0);
+}
+
+/* 让媒体画布位于透明遮罩层之上，否则 position:absolute 的 mask 会拦截视频/图片的点击，
+   导致视频播放按钮无法点击 */
+.el-image-viewer__canvas {
+  position: relative;
 }
 
 .el-image-viewer__wrapper {
