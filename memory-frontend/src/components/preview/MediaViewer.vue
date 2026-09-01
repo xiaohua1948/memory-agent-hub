@@ -16,7 +16,7 @@
           </span>
           <!-- ARROW -->
 
-          <div v-if="$slots.viewer">
+          <div v-if="$slots.viewer" class="el-image-viewer__viewer-slot">
             <slot name="viewer">
             </slot>
           </div>
@@ -711,10 +711,26 @@ const formatDuration = (seconds) => {
   background-color: rgba(0, 0, 0, 0);
 }
 
-/* 让媒体画布位于透明遮罩层之上，否则 position:absolute 的 mask 会拦截视频/图片的点击，
-   导致视频播放按钮无法点击 */
+/* canvas 只加 position:relative（不加 z-index），按 DOM 顺序自然排在 mask 之上，
+   同时低于内置按钮（element-plus 默认 z-index:1），避免遮挡关闭、箭头、缩放等按钮 */
 .el-image-viewer__canvas {
   position: relative;
+}
+
+/* viewer-slot 用 z-index:2 浮于所有元素之上。
+   pointer-events:none 让点击穿透到下方的 canvas（支持图片拖拽），
+   子元素通过 pointer-events:auto 恢复自定义按钮的点击 */
+.el-image-viewer__viewer-slot {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.el-image-viewer__viewer-slot > * {
+  pointer-events: auto;
 }
 
 .el-image-viewer__wrapper {
