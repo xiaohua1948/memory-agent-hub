@@ -40,6 +40,9 @@
                         <el-image :src="item.coverUrl || defaultCover" fit="cover"
                             class="picture-group-image">
                         </el-image>
+                        <div v-if="item.coverUrl" class="album-cover-preview" @click.stop="previewCover(item)">
+                            <i-ep-zoom-in />
+                        </div>
                         <div class="picture-group-shadow"></div>
                         <div class="picture-group-desc">
                             <div class="picture-desc-Model">{{ item.makeName == ' ' ? '' : item.makeName }}</div>
@@ -72,6 +75,7 @@ import { useRouter } from 'vue-router'
 import { Check } from '@element-plus/icons-vue'
 import { selectAllModelAlbum } from '@/api/album/album'
 import defaultCover from '@/assets/image/album.png';
+import $bus from '@/utils/bus.ts'
 
 
 /******************************​ 配置项 ​******************************/
@@ -141,6 +145,11 @@ const handleClickModelAlbum = (makeName: string, modelName: string) => {
         name: 'ModelAlbum',
         params: { makeName: makeName, modelName: modelName }
     })
+}
+// 预览模型相册封面（全屏）
+const previewCover = (item: API.ModelAlbum) => {
+    if (!item.coverUrl) return
+    $bus.emit('openImageViewer', { urlList: [item.coverUrl], initialIndex: 0 })
 }
 
 

@@ -109,6 +109,9 @@
                             :class="{ 'picture-group-image': true, 'picture-group-image-animation': isImageChecked(album.albumId) }"
                             fit="cover">
                         </el-image>
+                        <div v-if="album.coverUrl" class="album-cover-preview" @click.stop="previewCover(album)">
+                            <i-ep-zoom-in />
+                        </div>
 
                     </div>
 
@@ -296,6 +299,11 @@ const handleClickAlbum = (album: API.albumInfo) => {
         name: 'AlbumPicture',
         params: { albumId: album.albumId }
     })
+}
+// 预览相册封面（全屏）
+const previewCover = (album: API.albumInfo) => {
+    if (!album.coverUrl) return
+    $bus.emit('openImageViewer', { urlList: [album.coverUrl], initialIndex: 0 })
 }
 // 排序方式变化
 const handleCommandOrderType = (index: number) => {

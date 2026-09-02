@@ -1,6 +1,7 @@
 <template>
   <div id="basicLayout">
     <GlobalHeader :showSearh="true" />
+    <AgentChat />
     <div class="GlobalBody">
       <GlobalSider />
       <div class="GlobalContent">
@@ -18,6 +19,7 @@
 import GlobalHeader from '@/layouts/GlobalHeader.vue'
 import GlobalSider from "@/layouts/GlobalSider.vue";
 import FileUpload from '@/components/file/FileUpload.vue'
+import AgentChat from '@/components/ai/AgentChat.vue'
 </script>
 
 <style scoped>

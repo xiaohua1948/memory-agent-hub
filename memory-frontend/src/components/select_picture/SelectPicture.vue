@@ -99,7 +99,7 @@
     <el-divider />
     <!-- 图片列表 -->
     <SelectPictureList parentComponent="AllPicture" :fileInfoList="fileInfoList" :moreFileInfoList="moreFileInfoList"
-      :imageStyleSize="imageStyleSize" :scale="scale" :albumId="-1">
+        :imageStyleSize="imageStyleSize" :scale="scale" :albumId="-1" :emit-event="emitEvent">
     </SelectPictureList>
 
   </div>
@@ -111,6 +111,10 @@ import { onMounted, onUnmounted, reactive, ref } from 'vue';
 import $bus from '@/utils/bus.ts'
 import { selectAllFileInfo } from '@/api/file/file'
 import SelectPictureList from '@/components/select_picture/SelectPictureList.vue'
+
+const props = withDefaults(defineProps<{ emitEvent?: string }>(), {
+    emitEvent: 'addSelectPicture',
+});
 
 interface FilePage {
   records: API.FileInfoList;

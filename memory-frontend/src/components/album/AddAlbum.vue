@@ -5,7 +5,12 @@
         <span style="font-size: medium;">共{{ page.total }}个相册</span>
         <div class="album-content">
             <div class="album-item" v-for="(album) in albumInfoList" @click="handleAddAlbum(album.albumId)">
-                <el-image class="album-item-image" :src="album.coverUrl || defaultCover" fit="cover" />
+                <div class="album-item-cover">
+                    <el-image class="album-item-image" :src="album.coverUrl || defaultCover" fit="cover" />
+                    <div v-if="album.coverUrl" class="album-item-preview" @click.stop="previewCover(album)">
+                        <i-ep-zoom-in />
+                    </div>
+                </div>
                 <div class="album-item-desc">
                     <div class="album-item-title">{{ album.albumName }}</div>
                     <div class="album-item-time">{{ formatDate(album.createTime) }}</div>
@@ -62,6 +67,11 @@ watch(() => props.show, () => {
 onMounted(() => {
 
 })
+// 预览相册封面（全屏）
+const previewCover = (album: API.albumInfo) => {
+    if (!album.coverUrl) return
+    $bus.emit('openImageViewer', { urlList: [album.coverUrl], initialIndex: 0 })
+}
 const handleAddAlbum = (albumId: number) => {
     addPictureToAlbum({
         albumId: albumId,
@@ -141,6 +151,33 @@ const close = () => {
     width: 60px;
     height: 60px;
     border-radius: 5px;
+}
+
+.album-item-cover {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    flex: none;
+}
+
+.album-item-preview {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 60px;
+    height: 60px;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 20px;
+}
+
+.album-item-cover:hover .album-item-preview {
+    display: flex;
 }
 
 .album-item-title {

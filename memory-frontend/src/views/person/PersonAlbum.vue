@@ -16,7 +16,10 @@
                     <div class="content-header-info-item">
                         <div class="content-header-info-cover-shadow" @click="handleSelectAllPersonCover"></div>
                         <img class=" content-header-info-cover" :src="personAlbumInfo?.coverUrl" />
-
+                        <div v-if="personAlbumInfo?.coverUrl" class="person-cover-preview"
+                            @click.stop="previewCover(personAlbumInfo!.coverUrl)">
+                            <i-ep-zoom-in />
+                        </div>
                     </div>
                     <div class="content-header-info-item">
                         <div class="picture-item-combination" v-if="showSetInput">
@@ -153,6 +156,9 @@
 
                     <img class="dialog-cover-item-img" :src="item.coverUrl"
                         :style="{ border: personInfoForm.faceId == item.faceId ? '3px solid #3b75ff' : '' }" />
+                    <div class="dialog-cover-preview" @click.stop="previewCover(item.coverUrl)">
+                        <i-ep-zoom-in />
+                    </div>
                     <el-icon v-if="personInfoForm.faceId == item.faceId"
                         style="position: absolute;bottom: -20px;right: 32px;color: #3b75ff;">
                         <Top />
@@ -249,6 +255,11 @@ const handleUpdatePersonInfo = async () => {
 
 
 const personCoverUrls = ref<personCover[]>([]);
+// 预览人物封面（全屏）
+const previewCover = (coverUrl: string) => {
+    if (!coverUrl) return
+    $bus.emit('openImageViewer', { urlList: [coverUrl], initialIndex: 0 })
+}
 const handleSelectAllPersonCover = async () => {
     dialogVisible.value = true;
     const res = await selectAllPersonCover({
@@ -601,6 +612,28 @@ const loadMoreData = async () => {
     /* border:#3b75ff 3px solid; */
 }
 
+/* 对话框封面 hover 预览按钮 */
+.dialog-cover-preview {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.4);
+    color: #fff;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 22px;
+    z-index: 3;
+}
+
+.dialog-cover-item:hover .dialog-cover-preview {
+    display: flex;
+}
+
 /* 面包屑 */
 .album-header-breadcrumb {
     height: 100%;
@@ -643,6 +676,29 @@ const loadMoreData = async () => {
     margin-left: 10px;
     display: flex;
     align-items: center;
+    position: relative;
+}
+
+/* header 封面 hover 预览按钮 */
+.person-cover-preview {
+    position: absolute;
+    left: 0;
+    top: 12px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+    z-index: 3;
+}
+
+.content-header-info-item:hover .person-cover-preview {
+    display: flex;
 }
 
 .picture-item-combination {

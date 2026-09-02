@@ -701,7 +701,7 @@ const formatDuration = (seconds) => {
   position: fixed;
   width: 100%;
   height: 100%;
-  z-index: 100;
+  z-index: 99999;
   background-color: rgba(0, 0, 0, 0.8);
 }
 

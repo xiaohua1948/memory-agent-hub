@@ -77,6 +77,7 @@ interface Props {
     albumId: number,
     imageStyleSize: number,
     scale: { value: string; label: string },
+    emitEvent: string,
 }
 
 /******************************​ Props 配置 ​******************************/
@@ -87,6 +88,7 @@ const props = withDefaults(defineProps<Props>(), {
     albumId: -1,
     imageStyleSize: 150,
     scale: () => ({ value: 'original', label: '原始比例' }),
+    emitEvent: 'addSelectPicture',
 })
 
 /******************************​ 响应式变量 ​******************************/
@@ -160,10 +162,11 @@ const addSelectPicture = () => {
             const isValid = checkedSet.has(file.fileId)
             return isValid;
         })
-        .map(({ fileId, originFileName, thumbnailUrl, category, contentType, thumbnailObjectName, size }) => ({
+        .map(({ fileId, originFileName, thumbnailUrl, fileUrl, category, contentType, thumbnailObjectName, size }) => ({
             fileId: fileId,
             originFileName: originFileName,
             thumbnailUrl: thumbnailUrl,
+            fileUrl: fileUrl,
             category: category,
             contentType: contentType,
             thumbnailObjectName: thumbnailObjectName,
@@ -174,7 +177,7 @@ const addSelectPicture = () => {
 
     // 空数据保护
     if (selectPictureList.value.length > 0) {
-        $bus.emit('addSelectPicture', selectPictureList.value);
+        $bus.emit(props.emitEvent, selectPictureList.value);
     } else {
     }
 

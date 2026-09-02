@@ -218,6 +218,7 @@ declare namespace API {
     size: number;
     originFileName: string;
     thumbnailUrl: string;
+    fileUrl: string;
     contentType: string;
     thumbnailObjectName: string;
     tags: TagResult[]
@@ -235,4 +236,68 @@ declare namespace API {
     tagName: string;
     imageType: string;
 }
+
+  // ==================== AI 智能助手 ====================
+
+  /** Agent 类型：data = Data Agent；code = Code Agent */
+  type AgentType = 'data' | 'code'
+
+  interface AiChatRequest {
+    /** 会话ID（新建会话时可省略，由后端返回） */
+    sessionId?: string
+    /** data: Data Agent；code: Code Agent */
+    agentType: AgentType
+    /** 本轮用户消息内容 */
+    content: string
+    /** 照片上下文 fileId 列表（Code Agent 使用） */
+    fileIds?: string[]
+  }
+
+  type PendingActionType =
+    | 'CREATE_ALBUM'
+    | 'UPDATE_ALBUM'
+    | 'DELETE_ALBUM'
+    | 'ADD_PICTURES'
+
+  interface PendingActionPreview {
+    thumbnails?: string[]
+    count?: number
+    albumName?: string
+    albumId?: number
+    input?: string
+  }
+
+  interface PendingAction {
+    actionId: string
+    type: PendingActionType
+    title: string
+    params: Record<string, any>
+    preview?: PendingActionPreview
+  }
+
+  interface AiSession {
+    sessionId: string
+    agentType: AgentType
+    title?: string
+    status?: number
+    createTime?: string
+    updateTime?: string
+  }
+
+  interface AiPhotoResult {
+    fileId: string
+    thumbnailUrl?: string
+    fileUrl?: string
+    originFileName?: string
+  }
+
+  interface AiMessage {
+    role: 'user' | 'assistant' | 'tool'
+    content: string
+    /** text / html / pending_action / photos */
+    contentType: string
+    /** JSON 字符串（pending_action / photos）/ HTML 字符串（html）/ null（text） */
+    extra?: string
+    createTime?: string
+  }
 }  

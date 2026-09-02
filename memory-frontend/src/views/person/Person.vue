@@ -100,6 +100,9 @@
                             <el-image @click="handleClickPersonAlbum(item.personId)" :style="pictureSacleStyle"
                                 :src="item.coverUrl || defaultCover" class="picture-group-image">
                             </el-image>
+                            <div v-if="item.coverUrl" class="album-cover-preview" @click.stop="previewCover(item)">
+                                <i-ep-zoom-in />
+                            </div>
                             <div class="picture-item-combination" v-if="personNameInput[index]">
                                 <el-input maxlength="10" type="text" :ref="(el) => setInputRef(el, index)"
                                     @keyup.enter="handleUpdatePersonName(item, index)"
@@ -146,6 +149,7 @@ import { useRouter } from 'vue-router'
 import { Check, Select } from '@element-plus/icons-vue'
 import { selectAllPersonAlbum, updatePersonName, mergePerson, hiddenPerson } from '@/api/person/person'
 import defaultCover from '@/assets/image/album.png';
+import $bus from '@/utils/bus.ts'
 
 
 /******************************​ 配置项 ​******************************/
@@ -332,6 +336,11 @@ const handleClickPersonAlbum = (personId: number) => {
         name: 'personAlbum',
         params: { personId: personId }
     })
+}
+// 预览人物相册封面（全屏）
+const previewCover = (item: API.PersonAlbum) => {
+    if (!item.coverUrl) return
+    $bus.emit('openImageViewer', { urlList: [item.coverUrl], initialIndex: 0 })
 }
 // 设置输入框引用
 const setInputRef = (el: any, index: number) => {

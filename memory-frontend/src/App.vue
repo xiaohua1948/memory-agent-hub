@@ -1,10 +1,12 @@
 <template>
   <div id="app">
     <router-view />
+    <GlobalImageViewer />
   </div>
 </template>
 
 <script setup lang="ts">
+import GlobalImageViewer from '@/components/preview/GlobalImageViewer.vue'
 </script>
 <style>
 html,

@@ -54,6 +54,9 @@
                         <el-image :src="item.coverUrl || defaultCover" fit="cover"
                             class="picture-group-image">
                         </el-image>
+                        <div v-if="item.coverUrl" class="album-cover-preview" @click.stop="previewCover(item)">
+                            <i-ep-zoom-in />
+                        </div>
                         <div class="picture-group-shadow"></div>
                         <div class="picture-group-desc">
 
@@ -86,6 +89,7 @@ import { useRouter } from 'vue-router'
 import { Check } from '@element-plus/icons-vue'
 import { selectAllLocationAlbum } from '@/api/album/album'
 import defaultCover from '@/assets/image/album.png';
+import $bus from '@/utils/bus.ts'
 
 /******************************​ 接口定义 ​******************************/
 interface FilePage {
@@ -172,6 +176,11 @@ const handleClickLocationAlbum = (locationLevel: string, locationValue: string) 
         name: 'LocationAlbum',
         params: { locationLevel: locationLevel, locationValue: locationValue }
     })
+}
+// 预览位置相册封面（全屏）
+const previewCover = (item: API.locationAlbum) => {
+    if (!item.coverUrl) return
+    $bus.emit('openImageViewer', { urlList: [item.coverUrl], initialIndex: 0 })
 }
 
 

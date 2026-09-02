@@ -87,6 +87,37 @@
             <artifactId>rocketmq-spring-boot-starter</artifactId>
             <version>2.3.1</version>
         </dependency>
+        <!-- ============ AI 智能助手：LangChain4j ============ -->
+        <!-- 版本说明（已核对 Maven Central 2026-08 metadata）：
+             - langchain4j-open-ai 走普通语义版本，1.1.0 真实存在（对应 core 1.1.0）；
+             - langchain4j-community-redis 走独立 beta 序列，1.1.0-beta7 真实存在，
+               其 pom 依赖 langchain4j-core:1.1.0，故两者版本精确配对，无核心库冲突。
+             原设计文档「1.11.0 不存在」的判断有误（1.11.0 如今已发布），
+             但为与 community-redis 1.1.0-beta7 的核心库一致，仍锁定 1.1.0。 -->
+        <!-- 主库：AiServices / MessageWindowChatMemory / ChatMemory 实现等（1.x 从 core 拆分而来） -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j</artifactId>
+            <version>1.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai</artifactId>
+            <version>1.1.0</version>
+        </dependency>
+        <!-- 对话记忆 Redis 存储（多轮核心依赖，RedisChatMemoryStore） -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-community-redis</artifactId>
+            <version>1.1.0-beta7</version>
+        </dependency>
+        <!-- SQL 解析：text2sql 安全引擎（AST 行权限改写 / 白名单校验）。
+             注意：mybatis-plus-jsqlparser 3.5.9 已传递依赖 jsqlparser，此处显式锁定 5.0 与之对齐。 -->
+        <dependency>
+            <groupId>com.github.jsqlparser</groupId>
+            <artifactId>jsqlparser</artifactId>
+            <version>5.0</version>
+        </dependency>
         <!--mybatis-plus依赖-->
         <dependency>
             <groupId>com.baomidou</groupId>

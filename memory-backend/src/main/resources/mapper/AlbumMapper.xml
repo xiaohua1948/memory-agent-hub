@@ -161,7 +161,6 @@
         INNER JOIN location l ON uf.file_id = l.file_id
         WHERE uf.user_id = #{userId}
         AND uf.is_deleted = 0
-      -- 假设相册只包含图片
         GROUP BY
         <choose>
             <when test="locationLevel == 'country'">l.country</when>

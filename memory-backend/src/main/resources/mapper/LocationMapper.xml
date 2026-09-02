@@ -19,7 +19,8 @@
     <select id="selectAllLocation" resultType="com.memory.xiaohua.model.vo.visual.VisualLocationVO">
         SELECT
             city AS city,
-            COUNT(*) AS pictureCount,  -- 统计所有照片
+            <!-- 统计所有照片 -->
+            COUNT(*) AS pictureCount,
             MAX(coverUrl) AS coverUrl,
             MAX(longitude) AS longitude,
             MAX(latitude) AS latitude
@@ -35,7 +36,7 @@
                           INNER JOIN location l ON uf.file_id = l.file_id
                  WHERE uf.user_id = #{userId} AND uf.is_deleted = 0
              ) sub
--- WHERE rn = 1  -- 移除此行，保留所有记录
+        <!-- WHERE rn = 1（保留所有记录，故不限制 rn） -->
         GROUP BY city
     </select>
 

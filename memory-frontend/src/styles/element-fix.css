@@ -4,3 +4,25 @@
   max-width: 75vw !important;
   max-height: 75vh !important;
 }
+
+/* 相册封面 hover 预览按钮（全局复用，供相册列表封面点击全屏预览） */
+.album-cover-preview {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.picture-group-item:hover .album-cover-preview {
+  display: flex;
+}
