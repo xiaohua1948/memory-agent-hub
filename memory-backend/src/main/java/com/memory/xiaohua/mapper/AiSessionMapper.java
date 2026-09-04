@@ -30,4 +30,8 @@ public interface AiSessionMapper extends BaseMapper<AiSession> {
     /** 刷新会话更新时间（每轮 chat 后调用，避免覆盖标题） */
     @Update("update ai_session set update_time = now() where session_id = #{sessionId} and user_id = #{userId} and deleted = 0")
     int touch(@Param("sessionId") String sessionId, @Param("userId") Long userId);
+
+    /** 软删会话（deleted=1），返回受影响行数（0 表示会话不存在或无权限） */
+    @Update("update ai_session set deleted = 1, update_time = now() where session_id = #{sessionId} and user_id = #{userId} and deleted = 0")
+    int markDeleted(@Param("sessionId") String sessionId, @Param("userId") Long userId);
 }

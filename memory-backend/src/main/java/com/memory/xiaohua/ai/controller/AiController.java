@@ -30,6 +30,7 @@ import java.util.Map;
  *   <li>POST /ai/session          创建会话</li>
  *   <li>GET  /ai/session          会话列表</li>
  *   <li>GET  /ai/session/{id}/messages  会话历史</li>
+ *   <li>DELETE /ai/session/{id}   删除会话</li>
  *   <li>POST /ai/chat             SSE 流式聊天</li>
  *   <li>POST /ai/execute          执行确认的写操作</li>
  * </ul>
@@ -68,6 +69,14 @@ public class AiController {
     public BaseResponse<List<AiMessageVO>> listMessages(@PathVariable String sessionId) {
         Long userId = currentUserId();
         return ResultUtil.success(aiService.listMessages(userId, sessionId), "获取成功");
+    }
+
+    @DeleteMapping("/session/{sessionId}")
+    @Operation(summary = "删除会话", description = "软删指定会话及其消息，并清理运行时记忆")
+    public BaseResponse<?> deleteSession(@PathVariable String sessionId) {
+        Long userId = currentUserId();
+        aiService.deleteSession(userId, sessionId);
+        return ResultUtil.success("删除成功");
     }
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

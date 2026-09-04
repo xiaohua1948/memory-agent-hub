@@ -25,6 +25,9 @@ public interface AiService {
     /** 会话历史消息 */
     List<AiMessageVO> listMessages(Long userId, String sessionId);
 
+    /** 删除会话（软删会话与消息，并清理 Redis 运行时记忆） */
+    void deleteSession(Long userId, String sessionId);
+
     /**
      * 聊天（流式回调）。sink 推送 type: text/card/html 的事件。
      *

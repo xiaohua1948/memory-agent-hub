@@ -55,6 +55,16 @@
               :value="s.sessionId"
             />
           </el-select>
+          <el-tooltip content="删除当前会话" placement="top">
+            <el-button
+              link
+              class="session-delete-btn"
+              :disabled="!currentSessionId"
+              @click="handleDeleteSession"
+            >
+              <i-ep-delete class="op-icon" />
+            </el-button>
+          </el-tooltip>
         </div>
 
         <!-- 消息列表 -->
@@ -313,12 +323,13 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import $bus from '@/utils/bus';
 import SelectPicture from '@/components/select_picture/SelectPicture.vue';
 import {
   agentExecute,
   createSession,
+  deleteSession,
   listMessages,
   listSessions,
   streamChat,
@@ -724,6 +735,48 @@ async function handleNewSession() {
   await createCurrentSession();
 }
 
+// 删除当前会话（弹窗二次确认）
+async function handleDeleteSession() {
+  const sessionId = currentSessionId.value;
+  if (!sessionId || sending.value) return;
+  const target = sessions.value.find((s) => s.sessionId === sessionId);
+  try {
+    await ElMessageBox.confirm(
+      `确定删除会话「${target?.title || '新会话'}」吗？删除后不可恢复。`,
+      '删除会话',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger',
+      },
+    );
+  } catch {
+    return; // 用户取消
+  }
+  try {
+    const res = await deleteSession(sessionId);
+    if (res.code === 200) {
+      sessions.value = sessions.value.filter((s) => s.sessionId !== sessionId);
+      if (currentSessionId.value === sessionId) {
+        currentSessionId.value = '';
+        messages.value = [];
+        // 自动切换到剩余会话；无剩余会话则新建
+        if (sessions.value.length > 0) {
+          await switchSession(sessions.value[0].sessionId);
+        } else {
+          await createCurrentSession();
+        }
+      }
+      ElMessage.success('会话已删除');
+    } else {
+      ElMessage.error(res.message || '删除失败');
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '删除失败');
+  }
+}
+
 async function createCurrentSession() {
   try {
     // agent 类型已统一由主 Agent 判别，固定传 mixed（仅为兼容后端字段）
@@ -1113,6 +1166,11 @@ onUnmounted(() => {
 .session-select {
   flex: 1;
   min-width: 0;
+}
+
+/* 删除会话按钮 hover 提示危险操作 */
+.session-delete-btn:not(.is-disabled):hover {
+  color: #f56c6c;
 }
 
 /* 消息列表 */

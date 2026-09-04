@@ -68,6 +68,23 @@ public class AiChatMemoryFactory {
     }
 
     /**
+     * 清除会话的 Redis 运行时记忆（删除会话时调用，避免残留脏记忆被误回灌）。
+     * DB 侧记忆由调用方软删 ai_message。
+     */
+    public void clearMemory(String sessionId) {
+        if (chatMemoryStore == null) {
+            return;
+        }
+        try {
+            chatMemoryStore.deleteMessages(sessionId);
+            log.debug("[AI] 已清除 Redis 记忆 sessionId={}", sessionId);
+        } catch (Exception e) {
+            // 清理失败不影响删除主流程（TTL 最终会过期）
+            log.warn("[AI] 清除 Redis 记忆失败 sessionId={}", sessionId, e);
+        }
+    }
+
+    /**
      * DB → 记忆回灌：查 ai_message 最近 maxCount 条，按时间正序，
      * role=user → UserMessage，role=assistant → AiMessage，逐条 add。
      * 仅回灌纯文本（content），photos / html / pending_action 不进记忆。

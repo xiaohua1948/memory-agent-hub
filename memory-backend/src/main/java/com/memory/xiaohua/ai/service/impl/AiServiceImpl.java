@@ -122,6 +122,24 @@ public class AiServiceImpl implements AiService {
         return vos;
     }
 
+    /**
+     * 删除会话：软删会话 + 软删消息 + 清理 Redis 运行时记忆。
+     *
+     * <p>软删（deleted=1）保留审计痕迹；Redis 记忆必须同步清除，
+     * 否则同一 memoryId 复用时会残留已删会话的历史。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteSession(Long userId, String sessionId) {
+        checkSessionOwner(sessionId, userId);
+        if (sessionMapper.markDeleted(sessionId, userId) == 0) {
+            throw new BusinessException(StatusCode.NOT_FOUND_ERROR, "会话不存在或已删除");
+        }
+        messageMapper.markDeletedBySessionId(sessionId);
+        memoryFactory.clearMemory(sessionId);
+        log.info("[AI] 会话已删除 sessionId={}, userId={}", sessionId, userId);
+    }
+
     @Override
     public String chat(Long userId, AiChatRequest request, Consumer<Map<String, Object>> sink) {
         if (!properties.isEnabled()) {

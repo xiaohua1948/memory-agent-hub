@@ -28,6 +28,11 @@ export function listMessages(sessionId: string): Promise<API.BaseResponse> {
   return request<API.BaseResponse>(`/ai/session/${sessionId}/messages`, { method: 'GET' });
 }
 
+// 删除会话（软删会话与消息，后端同步清理运行时记忆）
+export function deleteSession(sessionId: string): Promise<API.BaseResponse> {
+  return request<API.BaseResponse>(`/ai/session/${sessionId}`, { method: 'DELETE' });
+}
+
 // 执行确认的写操作
 export function agentExecute(data: { actionId: string }): Promise<API.BaseResponse> {
   return request<API.BaseResponse>('/ai/execute', {
