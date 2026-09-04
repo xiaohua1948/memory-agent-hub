@@ -135,7 +135,13 @@ public class PendingActionService {
             if ("CONFIRMED".equals(status)) {
                 throw new BusinessException(StatusCode.OPERATION_ERROR, "该操作已执行，请勿重复确认");
             }
-            throw new BusinessException(StatusCode.OPERATION_ERROR, "操作不存在、已过期或无权限确认");
+            if (redisUtil.hget(key, "userId") == null) {
+                // key 整体不存在 = TTL 已过期（草稿从未执行）
+                throw new BusinessException(StatusCode.OPERATION_ERROR,
+                        "该操作已过期（超过 " + (properties.getPendingActionTtlSeconds() / 60)
+                                + " 分钟未确认，为防误操作已自动作废），请重新向助手发起该需求");
+            }
+            throw new BusinessException(StatusCode.OPERATION_ERROR, "操作不存在或无权限确认");
         }
 
         // Redis 确认成功后同步 DB 状态（乐观状态迁移，防并发）

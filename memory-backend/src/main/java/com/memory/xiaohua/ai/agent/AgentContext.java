@@ -31,6 +31,14 @@ public class AgentContext {
     /** 用户选中的照片上下文（Code Agent 使用） */
     private java.util.List<String> contextFileIds;
 
+    /**
+     * 本会话最近一次查询出的照片 fileId（多轮上下文复用）。
+     *
+     * <p>用户说「用这些照片生成网页」「把它们加入相册」时，模型无需重新调用
+     * searchPhotos，直接复用上下文中的照片结果即可。
+     */
+    private java.util.List<String> recentPhotoIds;
+
     /** 步骤结果存储（stepIndex -> key -> value） */
     private final Map<Integer, Map<String, Object>> stepResults = new LinkedHashMap<>();
 

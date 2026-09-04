@@ -81,6 +81,8 @@ public class Text2SqlService {
                 6. 只输出 SQL 本身，不要任何解释或代码块标记。
                 7. SELECT 列表必须包含 file 表的 file_id、thumbnail_url、file_url、origin_file_name 四列（供前端网格展示）。
                 8. 禁止使用 ? 占位符，所有条件值一律写成字面量（如 city = '南京'）。用户隔离由系统注入，不要写 user_id 条件。
+                9. 文件大小条件使用 f.size 字段（BIGINT，单位字节）：1MB=1048576字节、1KB=1024字节。
+                   例：用户说「2MB以上」→ f.size > 2097152；「小于500KB」→ f.size < 512000。
 
                 ## 用户问题
                 %s
@@ -111,6 +113,7 @@ public class Text2SqlService {
     private String buildSchemaHint() {
         return """
                 - file(file_id VARCHAR, origin_file_name VARCHAR, category VARCHAR, content_type VARCHAR,
+                       size BIGINT,  -- 文件大小，单位：字节（照片筛选常用）
                        file_url VARCHAR, thumbnail_url VARCHAR, date_time_original DATETIME,
                        width INT, height INT, make VARCHAR, model VARCHAR)
                 - user_file(id BIGINT, user_id BIGINT, file_id VARCHAR, is_deleted TINYINT, upload_time DATETIME)

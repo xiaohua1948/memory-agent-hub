@@ -1,10 +1,12 @@
 package com.memory.xiaohua.ai.tool;
 
+import com.memory.xiaohua.ai.config.AiProperties;
 import com.memory.xiaohua.ai.sql.Text2SqlService;
 import com.memory.xiaohua.exception.BusinessException;
 import com.memory.xiaohua.exception.StatusCode;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -24,9 +26,13 @@ import java.util.Map;
 public class QueryTools {
 
     private final Text2SqlService text2SqlService;
+    private final JdbcTemplate jdbcTemplate;
+    private final int maxRows;
 
-    public QueryTools(Text2SqlService text2SqlService) {
+    public QueryTools(Text2SqlService text2SqlService, JdbcTemplate jdbcTemplate, AiProperties properties) {
         this.text2SqlService = text2SqlService;
+        this.jdbcTemplate = jdbcTemplate;
+        this.maxRows = properties.getQueryMaxRows();
     }
 
     /**
@@ -68,7 +74,39 @@ public class QueryTools {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "查询条件为空");
         }
         List<Map<String, Object>> rows = text2SqlService.queryPhotos(question, userId);
+        return toStructured(rows);
+    }
+
+    /**
+     * 按相册ID查询照片（纯读，参数化 SQL，强制 user_id 隔离）。
+     *
+     * <p>不经过 text2sql：相册表不在 SQL 安全引擎白名单内（职责隔离设计），
+     * 此处用固定参数化 SQL 直接查询，兼顾安全与能力。
+     *
+     * @param albumId 相册ID（调用前须校验归属）
+     * @param userId  当前用户
+     * @return 照片列表（字段驼峰，与 searchPhotosStructured 一致）
+     */
+    public List<Map<String, Object>> searchPhotosByAlbumId(Long albumId, Long userId) {
+        if (albumId == null) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "相册ID不能为空");
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT f.file_id, f.thumbnail_url, f.file_url, f.origin_file_name " +
+                        "FROM album_picture ap " +
+                        "JOIN file f ON f.file_id = ap.file_id " +
+                        "JOIN user_file uf ON uf.file_id = f.file_id " +
+                        "WHERE ap.album_id = ? AND ap.user_id = ? AND uf.user_id = ? AND uf.is_deleted = 0 " +
+                        "ORDER BY ap.id DESC LIMIT ?",
+                albumId, userId, userId, maxRows);
+        return toStructured(rows);
+    }
+
+    private List<Map<String, Object>> toStructured(List<Map<String, Object>> rows) {
         List<Map<String, Object>> result = new ArrayList<>();
+        if (rows == null) {
+            return result;
+        }
         for (Map<String, Object> row : rows) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("fileId", row.get("file_id"));

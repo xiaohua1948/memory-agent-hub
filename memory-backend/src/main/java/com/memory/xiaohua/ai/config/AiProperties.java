@@ -35,6 +35,14 @@ public class AiProperties {
     /** 主任务模型配置 */
     private Model main = new Model();
 
+    /**
+     * 网页生成模型配置（默认继承 main 的 key/baseUrl，仅放大 max-tokens）。
+     *
+     * <p>网页生成是 token 消耗最大的子任务：一个带复杂 CSS 的单页通常需 6000~12000 tokens，
+     * 用主任务的 2048 会导致 HTML 在 CSS 中途被截断（表现为网页破损、图片区域根本没生成到）。
+     */
+    private Model webpage = new Model();
+
     /** 最大工具调用轮数（有界 tool-use 循环） */
     private int maxToolIterations = 20;
 

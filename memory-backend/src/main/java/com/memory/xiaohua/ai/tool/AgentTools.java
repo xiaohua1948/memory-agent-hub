@@ -1,0 +1,554 @@
+package com.memory.xiaohua.ai.tool;
+
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.memory.xiaohua.ai.action.PendingActionService;
+import com.memory.xiaohua.ai.agent.AgentToolContext;
+import com.memory.xiaohua.exception.BusinessException;
+import com.memory.xiaohua.exception.StatusCode;
+import com.memory.xiaohua.mapper.AlbumMapper;
+import com.memory.xiaohua.model.entity.Album;
+import com.memory.xiaohua.model.vo.ai.PendingActionVO;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * 主 Agent 工具集 —— 真正暴露给大模型 function calling 的「子 Agent」能力入口
+ *
+ * <p>架构：主 Agent（{@code MainAgent}）通过 LLM tool-calling 循环自主决定
+ * 调用哪个工具、传什么参数，实现复杂任务的自由编排；每个 @Tool 方法背后
+ * 组合一个子 Agent / 业务能力：
+ * <ul>
+ *   <li>searchPhotos —— 照片查询子 Agent（text2sql，纯读）</li>
+ *   <li>listAlbums / createAlbum / addPicturesToAlbum —— 相册管理子 Agent
+ *       （写操作只生成「草稿 + 确认卡片」，用户确认后才真正执行，human-in-the-loop）</li>
+ *   <li>generateHtmlPage —— 网页生成子 Agent（Code，纯读）</li>
+ * </ul>
+ *
+ * <p>安全设计：
+ * <ol>
+ *   <li>工具方法签名不含 userId —— 身份由 {@link AgentToolContext}（ThreadLocal）注入；</li>
+ *   <li>写操作不直接落库，只创建 PendingAction 草稿，推送确认卡片；</li>
+ *   <li>照片 fileId 做归属校验（user_file 表），防止模型幻觉出不存在的照片ID；</li>
+ *   <li>相册解析强制 user_id 条件，杜绝越权操作他人相册。</li>
+ * </ol>
+ *
+ * @author xiaohua
+ */
+@Slf4j
+@Component
+public class AgentTools {
+
+    private final QueryTools queryTools;
+    private final AlbumTools albumTools;
+    private final WebpageTools webpageTools;
+    private final PendingActionService pendingActionService;
+    private final AlbumMapper albumMapper;
+    private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
+
+    public AgentTools(QueryTools queryTools,
+                      AlbumTools albumTools,
+                      WebpageTools webpageTools,
+                      PendingActionService pendingActionService,
+                      AlbumMapper albumMapper,
+                      JdbcTemplate jdbcTemplate,
+                      ObjectMapper objectMapper) {
+        this.queryTools = queryTools;
+        this.albumTools = albumTools;
+        this.webpageTools = webpageTools;
+        this.pendingActionService = pendingActionService;
+        this.albumMapper = albumMapper;
+        this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
+    }
+
+    // ==================== 读操作（直接执行） ====================
+
+    /**
+     * 照片查询子 Agent：自然语言 → text2sql → 结构化照片列表。
+     */
+    @Tool("搜索当前用户的照片，返回照片列表。支持按地点、拍摄时间、文件大小、标签、设备等条件筛选")
+    public String searchPhotos(@P("查询条件的自然语言描述，例如：地点在上海且文件大小大于2MB") String question) {
+        AgentToolContext ctx = AgentToolContext.current();
+        if (question == null || question.isBlank()) {
+            return "查询条件为空，请补充筛选条件。";
+        }
+        List<Map<String, Object>> photos = queryTools.searchPhotosStructured(question, ctx.getUserId());
+        // 前端网格展示（photos 事件，与既有 SSE 契约一致）
+        ctx.pushEvent("photos", photos);
+        if (photos.isEmpty()) {
+            return "未找到符合条件的照片。";
+        }
+        // 返回给模型精简清单：只需 fileId（供下游写操作引用），避免缩略图 URL 噪声浪费 token
+        List<String> fileIds = photos.stream()
+                .map(p -> String.valueOf(p.get("fileId")))
+                .toList();
+        // 记录到上下文：后续步骤/后续轮次可直接复用，无需重新查询
+        ctx.addQueriedPhotoIds(fileIds);
+        return "找到 " + photos.size() + " 张照片，fileId 列表(JSON数组)：" + toJsonQuietly(fileIds);
+    }
+
+    /**
+     * 相册列表查询（读）。
+     */
+    @Tool("列出当前用户的所有相册（ID与名称）")
+    public String listAlbums() {
+        AgentToolContext ctx = AgentToolContext.current();
+        return albumTools.listAlbums(ctx.getUserId());
+    }
+
+    /**
+     * 按相册查询照片（读）：走关联表 album_picture 的固定参数化 SQL，
+     * 不依赖 text2sql（相册表不在 SQL 安全引擎白名单内，刻意不暴露）。
+     *
+     * <p>用于回答「某相册里有哪些照片」「XX 相册里的照片」类问题。
+     * 注意：普通 {@link #searchPhotos(String)} 走 text2sql，无法感知相册维度，
+     * 涉及具体相册时必须用本工具。
+     */
+    @Tool("查询某个相册里的所有照片。传入相册名称或相册ID。用于回答「某相册里有哪些照片」「XX相册里的照片」类问题。注意：不要把它当成关键词搜索，它只返回指定相册内的照片")
+    public String searchPhotosByAlbum(@P("目标相册名称或相册ID") String albumNameOrId) {
+        AgentToolContext ctx = AgentToolContext.current();
+        if (albumNameOrId == null || albumNameOrId.isBlank()) {
+            return "未指定相册，请先调用 listAlbums 查看相册列表。";
+        }
+        Album album = resolveAlbum(albumNameOrId, ctx.getUserId());
+        if (album == null) {
+            return "未找到相册「" + albumNameOrId + "」，可先调用 listAlbums 查看用户的相册列表。";
+        }
+        List<Map<String, Object>> photos = queryTools.searchPhotosByAlbumId(album.getAlbumId(), ctx.getUserId());
+        // 前端网格展示（photos 事件，与既有 SSE 契约一致）
+        ctx.pushEvent("photos", photos);
+        if (photos.isEmpty()) {
+            return "相册「" + album.getAlbumName() + "」中没有照片。";
+        }
+        // 返回给模型精简清单：只需 fileId（供下游写操作引用），避免缩略图 URL 噪声浪费 token
+        List<String> fileIds = photos.stream()
+                .map(p -> String.valueOf(p.get("fileId")))
+                .toList();
+        // 记录到上下文：后续步骤/后续轮次可直接复用，无需重新查询
+        ctx.addQueriedPhotoIds(fileIds);
+        return "在相册「" + album.getAlbumName() + "」中找到 " + photos.size() + " 张照片，fileId 列表(JSON数组)："
+                + toJsonQuietly(fileIds);
+    }
+
+    // ==================== 写操作（草稿 + 人工确认） ====================
+
+    /**
+     * 创建相册（草稿）：生成确认卡片，用户确认后才真正创建并放入照片。
+     */
+    @Tool("创建新相册并可放入指定照片。此操作先生成待确认卡片，用户在界面确认后才会真正执行")
+    public String createAlbum(@P("相册名称") String albumName,
+                              @P("相册描述，用户未指定时传空字符串") String description,
+                              @P("要放入的照片fileId列表，JSON数组字符串（如[\"id1\",\"id2\"]）。若直接用用户选中的照片或最近查询到的照片，传[]即可自动使用；确实只要空相册才传[]且上下文无照片") String photoFileIdsJson) {
+        AgentToolContext ctx = AgentToolContext.current();
+        if (albumName == null || albumName.isBlank() || albumName.length() > 30) {
+            return "相册名称不合法（不能为空且不超过30字），请根据用户输入提取。";
+        }
+        List<String> fileIds = resolvePhotoIds(ctx, photoFileIdsJson);
+        validatePhotoOwnership(fileIds);
+
+        String desc = description == null ? "" : description.trim();
+        PendingActionVO vo = new PendingActionVO();
+        vo.setActionType("CREATE_ALBUM");
+        vo.setTitle("创建相册");
+        vo.setDescription("即将创建相册「" + albumName + "」"
+                + (desc.isEmpty() ? "" : "，描述：" + desc)
+                + (fileIds.isEmpty() ? "" : "，并放入 " + fileIds.size() + " 张照片"));
+
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("albumName", albumName);
+        preview.put("description", desc);
+        preview.put("count", fileIds.size());
+        preview.put("thumbnails", loadThumbnails(fileIds));
+        vo.setPreview(preview);
+
+        String execParams = toJsonQuietly(buildExecParams("CREATE_ALBUM", ctx, albumName, desc, fileIds, null));
+        String actionId = pendingActionService.createPendingAction(
+                ctx.getUserId(), ctx.getSessionId(), "CREATE_ALBUM", execParams, vo);
+        vo.setActionId(actionId);
+        ctx.pushEvent("card", vo);
+        log.info("[AI][AgentTools] 生成创建相册草稿 actionId={}, name={}, photos={}", actionId, albumName, fileIds.size());
+        return "已生成相册「" + albumName + "」的创建请求（含 " + fileIds.size() + " 张照片），"
+                + "等待用户在界面确认后才会执行。请在最终答复中提醒用户确认。";
+    }
+
+    /**
+     * 向已有相册添加照片（草稿）：支持按相册名称或ID定位。
+     */
+    @Tool("向已存在的相册添加指定照片。此操作先生成待确认卡片，用户在界面确认后才会真正执行")
+    public String addPicturesToAlbum(@P("目标相册名称或相册ID") String albumNameOrId,
+                                     @P("照片fileId列表，JSON数组字符串。若用用户选中的照片或最近查询到的照片，传[]即可自动使用") String photoFileIdsJson) {
+        AgentToolContext ctx = AgentToolContext.current();
+        if (albumNameOrId == null || albumNameOrId.isBlank()) {
+            return "未指定目标相册，可先调用 listAlbums 查看相册列表。";
+        }
+        Album album = resolveAlbum(albumNameOrId, ctx.getUserId());
+        if (album == null) {
+            return "未找到相册「" + albumNameOrId + "」，可先调用 listAlbums 查看用户的相册列表。";
+        }
+        List<String> fileIds = resolvePhotoIds(ctx, photoFileIdsJson);
+        if (fileIds.isEmpty()) {
+            return "照片列表为空，未生成操作。请先调用 searchPhotos 查询照片。";
+        }
+        validatePhotoOwnership(fileIds);
+
+        PendingActionVO vo = new PendingActionVO();
+        vo.setActionType("ADD_PICTURES");
+        vo.setTitle("添加照片到相册");
+        vo.setDescription("即将向相册「" + album.getAlbumName() + "」添加 " + fileIds.size() + " 张照片");
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("albumId", album.getAlbumId());
+        preview.put("albumName", album.getAlbumName());
+        preview.put("count", fileIds.size());
+        preview.put("thumbnails", loadThumbnails(fileIds));
+        vo.setPreview(preview);
+
+        String execParams = toJsonQuietly(buildExecParams("ADD_PICTURES", ctx, null, null, fileIds, album.getAlbumId()));
+        String actionId = pendingActionService.createPendingAction(
+                ctx.getUserId(), ctx.getSessionId(), "ADD_PICTURES", execParams, vo);
+        vo.setActionId(actionId);
+        ctx.pushEvent("card", vo);
+        log.info("[AI][AgentTools] 生成添加照片草稿 actionId={}, albumId={}, photos={}",
+                actionId, album.getAlbumId(), fileIds.size());
+        return "已生成向相册「" + album.getAlbumName() + "」添加 " + fileIds.size()
+                + " 张照片的请求，等待用户在界面确认后执行。请在最终答复中提醒用户确认。";
+    }
+
+    /**
+     * 更新相册信息（草稿）：改名/改描述，留空表示保持原值。
+     */
+    @Tool("更新已有相册的名称或描述，参数留空字符串表示保持原值不变。此操作先生成待确认卡片，用户在界面确认后才会真正执行")
+    public String updateAlbumInfo(@P("目标相册名称或相册ID") String albumNameOrId,
+                                  @P("新相册名称，不修改时传空字符串") String newAlbumName,
+                                  @P("新相册描述，不修改时传空字符串") String newDescription) {
+        AgentToolContext ctx = AgentToolContext.current();
+        Album album = resolveAlbum(albumNameOrId, ctx.getUserId());
+        if (album == null) {
+            return "未找到相册「" + albumNameOrId + "」，可先调用 listAlbums 查看用户的相册列表。";
+        }
+        String name = (newAlbumName == null || newAlbumName.isBlank())
+                ? album.getAlbumName() : newAlbumName.trim();
+        String desc = (newDescription == null || newDescription.isBlank())
+                ? (album.getDescription() == null ? "" : album.getDescription())
+                : newDescription.trim();
+        if (name.length() > 30) {
+            return "新相册名称超过30字，请缩短后重试。";
+        }
+        if (name.equals(album.getAlbumName()) && desc.equals(album.getDescription() == null ? "" : album.getDescription())) {
+            return "新名称和新描述与当前值相同，无需修改。";
+        }
+
+        PendingActionVO vo = new PendingActionVO();
+        vo.setActionType("UPDATE_ALBUM");
+        vo.setTitle("修改相册信息");
+        vo.setDescription("即将修改相册「" + album.getAlbumName() + "」："
+                + (name.equals(album.getAlbumName()) ? "名称不变" : "名称 →「" + name + "」")
+                + (desc.equals(album.getDescription() == null ? "" : album.getDescription())
+                        ? "，描述不变" : "，描述 →「" + desc + "」"));
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("albumId", album.getAlbumId());
+        preview.put("albumName", album.getAlbumName());
+        preview.put("oldName", album.getAlbumName());
+        preview.put("newName", name);
+        preview.put("oldDescription", album.getDescription());
+        preview.put("newDescription", desc);
+        vo.setPreview(preview);
+
+        String execParams = toJsonQuietly(buildExecParams("UPDATE_ALBUM", ctx, name, desc, List.of(), album.getAlbumId()));
+        String actionId = pendingActionService.createPendingAction(
+                ctx.getUserId(), ctx.getSessionId(), "UPDATE_ALBUM", execParams, vo);
+        vo.setActionId(actionId);
+        ctx.pushEvent("card", vo);
+        log.info("[AI][AgentTools] 生成修改相册草稿 actionId={}, albumId={}", actionId, album.getAlbumId());
+        return "已生成修改相册「" + album.getAlbumName() + "」信息的请求，等待用户在界面确认后执行。"
+                + "请在最终答复中提醒用户确认。";
+    }
+
+    /**
+     * 删除相册（草稿）：危险操作，预览中明示是否连带删除照片。
+     */
+    @Tool("删除相册。此操作先生成待确认卡片，用户在界面确认后才会真正执行。deletePicturesToo 为 true 时相册内照片会一并移入回收站，需向用户明确提示后果")
+    public String deleteAlbum(@P("目标相册名称或相册ID") String albumNameOrId,
+                              @P("是否同时删除相册内照片：true/false") boolean deletePicturesToo) {
+        AgentToolContext ctx = AgentToolContext.current();
+        Album album = resolveAlbum(albumNameOrId, ctx.getUserId());
+        if (album == null) {
+            return "未找到相册「" + albumNameOrId + "」，可先调用 listAlbums 查看用户的相册列表。";
+        }
+
+        PendingActionVO vo = new PendingActionVO();
+        vo.setActionType("DELETE_ALBUM");
+        vo.setTitle("删除相册");
+        vo.setDescription("即将删除相册「" + album.getAlbumName() + "」"
+                + (deletePicturesToo ? "，相册内照片将一并移入回收站" : "，相册内照片不会被删除"));
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("albumId", album.getAlbumId());
+        preview.put("albumName", album.getAlbumName());
+        preview.put("deletePicturesToo", deletePicturesToo);
+        preview.put("deleteWarning", deletePicturesToo
+                ? "相册内照片将一并移入回收站" : "仅删除相册，照片不会被删除");
+        vo.setPreview(preview);
+
+        Map<String, Object> params = buildExecParams("DELETE_ALBUM", ctx, album.getAlbumName(), null,
+                List.of(), album.getAlbumId());
+        params.put("isDeletePicture", deletePicturesToo);
+        String execParams = toJsonQuietly(params);
+        String actionId = pendingActionService.createPendingAction(
+                ctx.getUserId(), ctx.getSessionId(), "DELETE_ALBUM", execParams, vo);
+        vo.setActionId(actionId);
+        ctx.pushEvent("card", vo);
+        log.info("[AI][AgentTools] 生成删除相册草稿 actionId={}, albumId={}, deletePictures={}",
+                actionId, album.getAlbumId(), deletePicturesToo);
+        return "已生成删除相册「" + album.getAlbumName() + "」的请求"
+                + (deletePicturesToo ? "（含删除照片）" : "") + "，等待用户在界面确认后执行。"
+                + "这是危险操作，请在最终答复中重点提醒用户确认。";
+    }
+
+    /**
+     * 从相册移除照片（草稿）：仅解除关联，照片本体不删除。
+     */
+    @Tool("从指定相册移除照片，仅解除照片与相册的关联，照片本身不会被删除。此操作先生成待确认卡片，用户在界面确认后才会真正执行")
+    public String removePicturesFromAlbum(@P("目标相册名称或相册ID") String albumNameOrId,
+                                          @P("要移除的照片fileId列表，JSON数组字符串") String photoFileIdsJson) {
+        AgentToolContext ctx = AgentToolContext.current();
+        Album album = resolveAlbum(albumNameOrId, ctx.getUserId());
+        if (album == null) {
+            return "未找到相册「" + albumNameOrId + "」，可先调用 listAlbums 查看用户的相册列表。";
+        }
+        List<String> fileIds = parseFileIds(photoFileIdsJson);
+        if (fileIds.isEmpty()) {
+            return "照片列表为空，未生成操作。";
+        }
+        validatePhotoOwnership(fileIds);
+
+        PendingActionVO vo = new PendingActionVO();
+        vo.setActionType("REMOVE_PICTURES");
+        vo.setTitle("从相册移除照片");
+        vo.setDescription("即将从相册「" + album.getAlbumName() + "」移除 " + fileIds.size()
+                + " 张照片（照片本身不会被删除）");
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("albumId", album.getAlbumId());
+        preview.put("albumName", album.getAlbumName());
+        preview.put("count", fileIds.size());
+        preview.put("thumbnails", loadThumbnails(fileIds));
+        vo.setPreview(preview);
+
+        String execParams = toJsonQuietly(buildExecParams("REMOVE_PICTURES", ctx, null, null, fileIds, album.getAlbumId()));
+        String actionId = pendingActionService.createPendingAction(
+                ctx.getUserId(), ctx.getSessionId(), "REMOVE_PICTURES", execParams, vo);
+        vo.setActionId(actionId);
+        ctx.pushEvent("card", vo);
+        log.info("[AI][AgentTools] 生成移除照片草稿 actionId={}, albumId={}, photos={}",
+                actionId, album.getAlbumId(), fileIds.size());
+        return "已生成从相册「" + album.getAlbumName() + "」移除 " + fileIds.size()
+                + " 张照片的请求，等待用户在界面确认后执行。请在最终答复中提醒用户确认。";
+    }
+
+    // ==================== 网页生成子 Agent ====================
+
+    /**
+     * 网页生成子 Agent：基于用户选中照片 + 创意需求生成 HTML。
+     */
+    @Tool("根据照片与创意需求生成一个HTML展示网页并展示给用户")
+    public String generateHtmlPage(
+            @P("网页的创意需求描述（如风格、标题、布局）") String requirement,
+            @P("照片fileId列表，JSON数组字符串（如[\"id1\",\"id2\"]）。优先传系统提示中给出的「用户选中的照片」或「最近查询到的照片」ID；若用户就是要用他选中的照片，传[]即可自动使用") String fileIdsJson) {
+        AgentToolContext ctx = AgentToolContext.current();
+        List<String> fileIds = parseFileIds(fileIdsJson);
+
+        // 容错1：模型常把 fileId 列表写进需求文本而非独立参数（如"照片fileId列表为：[\"id1\",...]"），
+        // 此时从文本中提取，避免走到"无照片"分支导致网页里没有真实图片
+        if (fileIds.isEmpty() && requirement != null && !requirement.isBlank()) {
+            fileIds = extractFileIdsFromText(requirement);
+            if (!fileIds.isEmpty()) {
+                log.info("[AI][AgentTools] 从需求文本中回提取出 {} 个 fileId", fileIds.size());
+            }
+        }
+        // 容错2：回退到用户在界面勾选的照片
+        if (fileIds.isEmpty() && ctx.getContextFileIds() != null && !ctx.getContextFileIds().isEmpty()) {
+            fileIds = ctx.getContextFileIds();
+        }
+        // 容错3：复用本轮已查询出的照片
+        if (fileIds.isEmpty() && !ctx.getQueriedPhotoIds().isEmpty()) {
+            fileIds = ctx.getQueriedPhotoIds();
+            log.info("[AI][AgentTools] 复用本轮已查询的 {} 张照片", fileIds.size());
+        }
+        // 容错4：复用会话历史中最近一次查询出的照片（用户说"用这些照片"时无需重查）
+        if (fileIds.isEmpty() && ctx.getRecentPhotoIds() != null && !ctx.getRecentPhotoIds().isEmpty()) {
+            fileIds = ctx.getRecentPhotoIds();
+            log.info("[AI][AgentTools] 复用会话历史中的 {} 张照片", fileIds.size());
+        }
+
+        if (!fileIds.isEmpty()) {
+            validatePhotoOwnership(fileIds);
+        }
+        log.info("[AI][AgentTools] 生成网页：fileIdsJson={}, 需求文本提取={}, 最终照片数={}",
+                fileIdsJson == null ? "null" : fileIdsJson.substring(0, Math.min(60, fileIdsJson.length())),
+                requirement == null ? "" : requirement.substring(0, Math.min(60, requirement.length())),
+                fileIds.size());
+
+        String html = webpageTools.generateHtml(fileIds, requirement, ctx.getUserId());
+        ctx.pushEvent("html", html);
+        return "网页已生成并展示给用户（含 " + fileIds.size() + " 张照片）。"
+                + (fileIds.isEmpty() ? "注意：未指定任何照片，网页中不含真实照片，只有占位排版。" : "");
+    }
+
+    /**
+     * 解析"照片来源"：优先用显式参数，否则按上下文优先级回退。
+     *
+     * <p>回退顺序：显式参数 → 界面勾选 → 本轮已查询 → 会话历史最近一次查询。
+     * 这样用户说「用这些照片建相册」时无需重新调用 searchPhotos。
+     */
+    private List<String> resolvePhotoIds(AgentToolContext ctx, String fileIdsJson) {
+        List<String> ids = parseFileIds(fileIdsJson);
+        if (!ids.isEmpty()) {
+            return ids;
+        }
+        if (ctx.getContextFileIds() != null && !ctx.getContextFileIds().isEmpty()) {
+            return ctx.getContextFileIds();
+        }
+        if (!ctx.getQueriedPhotoIds().isEmpty()) {
+            log.info("[AI][AgentTools] 复用本轮已查询的 {} 张照片", ctx.getQueriedPhotoIds().size());
+            return ctx.getQueriedPhotoIds();
+        }
+        if (ctx.getRecentPhotoIds() != null && !ctx.getRecentPhotoIds().isEmpty()) {
+            log.info("[AI][AgentTools] 复用会话历史中的 {} 张照片", ctx.getRecentPhotoIds().size());
+            return ctx.getRecentPhotoIds();
+        }
+        return List.of();
+    }
+
+    /**
+     * 从任意文本中提取 fileId（32 位十六进制，带或不带连字符均可）。
+     * 用于容错模型把 ID 列表写在描述文本里而非独立参数的情况。
+     */
+    private List<String> extractFileIdsFromText(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}")
+                .matcher(text);
+        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
+        while (m.find() && ids.size() < 100) {
+            ids.add(m.group().toLowerCase());
+        }
+        return new ArrayList<>(ids);
+    }
+
+    // ==================== 内部工具方法 ====================
+
+    /** 解析模型传入的照片ID列表（JSON数组字符串，容错单个裸ID） */
+    private List<String> parseFileIds(String photoFileIdsJson) {
+        if (photoFileIdsJson == null || photoFileIdsJson.isBlank()) {
+            return List.of();
+        }
+        String t = photoFileIdsJson.trim();
+        try {
+            if (t.startsWith("[")) {
+                List<Object> raw = objectMapper.readValue(t, new TypeReference<>() {});
+                return raw.stream()
+                        .filter(Objects::nonNull)
+                        .map(String::valueOf)
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .toList();
+            }
+            // 容错：模型直接传单个ID
+            return List.of(t.replaceAll("^\"|\"$", ""));
+        } catch (Exception e) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "照片ID列表格式不正确，应为JSON数组字符串");
+        }
+    }
+
+    /** 校验照片归属当前用户（防模型幻觉出不存在的 fileId 直接写库） */
+    private void validatePhotoOwnership(List<String> fileIds) {
+        if (fileIds.isEmpty()) {
+            return;
+        }
+        for (String id : fileIds) {
+            if (id == null || !id.matches("[0-9a-zA-Z-]{1,64}")) {
+                throw new BusinessException(StatusCode.PARAMS_ERROR, "照片ID不合法: " + id);
+            }
+        }
+        String placeholders = String.join(",", java.util.Collections.nCopies(fileIds.size(), "?"));
+        List<Object> args = new ArrayList<>();
+        args.add(AgentToolContext.current().getUserId());
+        args.addAll(fileIds);
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_file WHERE user_id = ? AND is_deleted = 0 AND file_id IN ("
+                        + placeholders + ")",
+                Integer.class, args.toArray());
+        if (count == null || count != fileIds.size()) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR,
+                    "部分照片不存在或不属于当前用户，请先通过查询工具获取真实的照片ID，不要编造");
+        }
+    }
+
+    /** 解析相册：纯数字按ID定位，否则按名称模糊匹配；强制 user_id 归属条件 */
+    private Album resolveAlbum(String albumNameOrId, Long userId) {
+        QueryWrapper<Album> qw = new QueryWrapper<>();
+        qw.eq("user_id", userId);
+        if (albumNameOrId.matches("\\d+")) {
+            qw.eq("album_id", Long.valueOf(albumNameOrId));
+        } else {
+            qw.like("album_name", albumNameOrId.trim());
+        }
+        qw.last("LIMIT 1");
+        return albumMapper.selectOne(qw);
+    }
+
+    /** 批量加载照片缩略图（最多6张，供确认卡片展示） */
+    private List<String> loadThumbnails(List<String> fileIds) {
+        if (fileIds.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(",", java.util.Collections.nCopies(fileIds.size(), "?"));
+        List<String> urls = jdbcTemplate.queryForList(
+                "SELECT thumbnail_url FROM file WHERE file_id IN (" + placeholders + ")",
+                String.class, fileIds.toArray());
+        return urls.stream()
+                .filter(u -> u != null && !u.isBlank())
+                .limit(6)
+                .toList();
+    }
+
+    /** 生成确认后真正执行的参数 JSON（AiServiceImpl.execute 消费） */
+    private Map<String, Object> buildExecParams(String actionType, AgentToolContext ctx,
+                                                String albumName, String description,
+                                                List<String> fileIds, Long albumId) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("actionType", actionType);
+        params.put("userId", ctx.getUserId());
+        if (albumName != null) {
+            params.put("albumName", albumName);
+        }
+        if (description != null) {
+            params.put("description", description);
+        }
+        params.put("fileIds", fileIds);
+        if (albumId != null) {
+            params.put("albumId", albumId);
+        }
+        return params;
+    }
+
+    private String toJsonQuietly(Object o) {
+        try {
+            return objectMapper.writeValueAsString(o);
+        } catch (Exception e) {
+            return "[]".equals(String.valueOf(o)) ? "[]" : "{}";
+        }
+    }
+}

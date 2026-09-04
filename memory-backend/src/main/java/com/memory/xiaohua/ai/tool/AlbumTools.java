@@ -36,13 +36,18 @@ public class AlbumTools {
      * 创建相册（用户确认后执行）
      */
     @Tool("创建一个新相册，返回相册ID")
-    public Long createAlbum(@P("相册名称") String albumName, @P("当前用户ID") Long userId) {
+    public Long createAlbum(@P("相册名称") String albumName,
+                            @P("相册描述，可为空") String description,
+                            @P("当前用户ID") Long userId) {
         if (albumName == null || albumName.isBlank() || albumName.length() > 30) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "相册名称不合法");
         }
         Album album = new Album();
         album.setUserId(userId);
         album.setAlbumName(albumName);
+        if (description != null && !description.isBlank() && !"null".equalsIgnoreCase(description)) {
+            album.setDescription(description.trim());
+        }
         album.setStatus(0);
         albumMapper.insert(album);
         return album.getAlbumId();
@@ -59,6 +64,30 @@ public class AlbumTools {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "参数错误");
         }
         albumService.addPictureToAlbum(fileIds, albumId, userId);
+    }
+
+    /**
+     * 更新相册名称/描述（用户确认后执行）
+     */
+    public void updateAlbumInfo(Long albumId, String albumName, String description, Long userId) {
+        if (albumId == null || albumName == null || albumName.isBlank()) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "相册更新参数不完整");
+        }
+        Album album = new Album();
+        album.setAlbumId(albumId);
+        album.setAlbumName(albumName);
+        album.setDescription(description == null ? "" : description);
+        albumService.updateAlbumInfo(album, userId);
+    }
+
+    /**
+     * 删除相册（用户确认后执行），isDeletePicture=true 时相册内照片一并逻辑删除
+     */
+    public void deleteAlbum(Long albumId, boolean isDeletePicture, Long userId) {
+        if (albumId == null) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "相册ID不能为空");
+        }
+        albumService.deleteAlbum(List.of(albumId), isDeletePicture, userId);
     }
 
     /**

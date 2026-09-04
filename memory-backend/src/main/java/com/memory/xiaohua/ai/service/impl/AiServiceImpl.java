@@ -1,9 +1,10 @@
 package com.memory.xiaohua.ai.service.impl;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.memory.xiaohua.ai.action.PendingActionService;
 import com.memory.xiaohua.ai.agent.AgentContext;
-import com.memory.xiaohua.ai.agent.AgentOrchestrator;
+import com.memory.xiaohua.ai.agent.MainAgent;
 import com.memory.xiaohua.ai.config.AiProperties;
 import com.memory.xiaohua.ai.memory.AiChatMemoryFactory;
 import com.memory.xiaohua.ai.service.AiService;
@@ -21,7 +22,10 @@ import com.memory.xiaohua.model.vo.ai.AiSessionVO;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
+import dev.langchain4j.model.chat.ChatModel;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,16 +51,24 @@ public class AiServiceImpl implements AiService {
 
     private final AiSessionMapper sessionMapper;
     private final AiMessageMapper messageMapper;
-    private final AgentOrchestrator orchestrator;
+    private final MainAgent mainAgent;
     private final PendingActionService pendingActionService;
     private final AlbumTools albumTools;
     private final AiChatMemoryFactory memoryFactory;
     private final AiProperties properties;
     private final ObjectMapper objectMapper;
 
+    /** createSession 写入的默认标题（命中则触发标题生成） */
+    private static final String DEFAULT_SESSION_TITLE = "新对话";
+
+    /** 轻量 router 模型：用于会话标题生成（未配置时兜底截取前12字） */
+    @Autowired(required = false)
+    @Qualifier("routerModel")
+    private ChatModel routerModel;
+
     public AiServiceImpl(AiSessionMapper sessionMapper,
                          AiMessageMapper messageMapper,
-                         AgentOrchestrator orchestrator,
+                         MainAgent mainAgent,
                          PendingActionService pendingActionService,
                          AlbumTools albumTools,
                          AiChatMemoryFactory memoryFactory,
@@ -64,7 +76,7 @@ public class AiServiceImpl implements AiService {
                          ObjectMapper objectMapper) {
         this.sessionMapper = sessionMapper;
         this.messageMapper = messageMapper;
-        this.orchestrator = orchestrator;
+        this.mainAgent = mainAgent;
         this.pendingActionService = pendingActionService;
         this.albumTools = albumTools;
         this.memoryFactory = memoryFactory;
@@ -75,12 +87,12 @@ public class AiServiceImpl implements AiService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public AiSessionVO createSession(Long userId, AiCreateSessionRequest request) {
-        String agentType = request == null || request.getAgentType() == null
-                ? "mixed" : request.getAgentType().toLowerCase();
+        // 任务路由已统一由主 Agent（MainAgent）基于工具判别，agent_type 固定 mixed，
+        // 不再区分 data/code 会话类型（字段保留仅为 DB schema 兼容）
         AiSession session = new AiSession();
         session.setSessionId(UUID.randomUUID().toString().replace("-", ""));
         session.setUserId(userId);
-        session.setAgentType(agentType);
+        session.setAgentType("mixed");
         session.setTitle("新对话");
         session.setStatus(0);
         session.setCreateTime(LocalDateTime.now());
@@ -145,16 +157,22 @@ public class AiServiceImpl implements AiService {
         context.setUserInput(userInput);
         context.setHistory(history);
         context.setContextFileIds(request.getFileIds());
+        // 多轮上下文：取本会话最近一次查询出的照片，供后续工具直接复用（无需重查）
+        context.setRecentPhotoIds(loadRecentPhotoIds(messageMapper, sessionId));
 
         final List<Map<String, Object>> produced = new ArrayList<>();
-        orchestrator.execute(context, event -> {
-            produced.add(event);
-            sink.accept(event);
+        mainAgent.execute(context, event -> {
+            produced.add(event);            // 原始事件（对象形式）：供下方持久化
+            sink.accept(toSseEvent(event)); // 字符串化事件：SSE 传输确定性 JSON
         });
 
         // 6. 持久化助手产出：content 纯文本 + extra 结构化（HTML/卡片不进记忆）
         for (Map<String, Object> event : produced) {
             String type = String.valueOf(event.getOrDefault("type", "text"));
+            if ("tool".equals(type)) {
+                // 工具调用进度事件：仅前端展示，不落库、不进记忆
+                continue;
+            }
             String contentType;
             String content;
             String extra = null;
@@ -167,7 +185,8 @@ public class AiServiceImpl implements AiService {
                 case "html" -> {
                     contentType = "html";
                     content = "已生成网页";
-                    extra = String.valueOf(event.getOrDefault("data", ""));
+                    // extra 列为 MySQL JSON 类型：HTML 原文不是合法 JSON，必须包装成 JSON 对象存储
+                    extra = toJsonQuietly(Map.of("html", String.valueOf(event.getOrDefault("data", ""))));
                 }
                 case "photos" -> {
                     contentType = "photos";
@@ -190,6 +209,9 @@ public class AiServiceImpl implements AiService {
         // 7. 刷新会话更新时间（不覆盖标题）
         sessionMapper.touch(sessionId, userId);
 
+        // 8. 首轮对话后生成会话标题（仅在默认标题时触发；同步执行保证流关闭前送达）
+        maybeGenerateTitle(sessionId, userId, userInput, sink);
+
         return sessionId;
     }
 
@@ -202,18 +224,76 @@ public class AiServiceImpl implements AiService {
         try {
             Map<String, Object> params = objectMapper.readValue(execParamsJson, Map.class);
             String actionType = String.valueOf(params.getOrDefault("actionType", ""));
-            String input = String.valueOf(params.getOrDefault("input", ""));
             Map<String, Object> result = new LinkedHashMap<>();
 
             switch (actionType) {
                 case "CREATE_ALBUM" -> {
-                    String albumName = extractAlbumName(input);
-                    Long albumId = albumTools.createAlbum(albumName, userId);
+                    String albumName = asString(params.get("albumName"));
+                    if (albumName == null) {
+                        // 兼容旧版草稿（仅含自然语言 input）
+                        albumName = extractAlbumName(String.valueOf(params.getOrDefault("input", "")));
+                    }
+                    String description = asString(params.get("description"));
+                    Long albumId = albumTools.createAlbum(albumName, description, userId);
                     result.put("albumId", albumId);
-                    result.put("message", "相册「" + albumName + "」创建成功");
+                    result.put("albumName", albumName);
+                    List<String> fileIds = asStringList(params.get("fileIds"));
+                    if (!fileIds.isEmpty()) {
+                        albumTools.addPicturesToAlbum(fileIds, albumId, userId);
+                    }
+                    result.put("message", "相册「" + albumName + "」创建成功"
+                            + (fileIds.isEmpty() ? "" : "，已放入 " + fileIds.size() + " 张照片"));
                 }
                 case "ADD_PICTURES" -> {
-                    result.put("message", "照片添加需在确认卡片中指定照片，已收到确认");
+                    Object albumIdObj = params.get("albumId");
+                    List<String> fileIds = asStringList(params.get("fileIds"));
+                    if (albumIdObj == null || fileIds.isEmpty()) {
+                        result.put("message", "操作已确认，但缺少目标相册或照片参数");
+                    } else {
+                        Long albumId = ((Number) albumIdObj).longValue();
+                        albumTools.addPicturesToAlbum(fileIds, albumId, userId);
+                        result.put("albumId", albumId);
+                        result.put("message", "已将 " + fileIds.size() + " 张照片添加到相册");
+                    }
+                }
+                case "UPDATE_ALBUM" -> {
+                    Object albumIdObj = params.get("albumId");
+                    if (albumIdObj == null) {
+                        result.put("message", "操作已确认，但缺少目标相册参数");
+                    } else {
+                        Long albumId = ((Number) albumIdObj).longValue();
+                        String newName = asString(params.get("albumName"));
+                        String newDesc = asString(params.get("description"));
+                        albumTools.updateAlbumInfo(albumId, newName, newDesc, userId);
+                        result.put("albumId", albumId);
+                        result.put("message", "相册信息已更新"
+                                + (newName != null ? "，名称：「" + newName + "」" : ""));
+                    }
+                }
+                case "DELETE_ALBUM" -> {
+                    Object albumIdObj = params.get("albumId");
+                    if (albumIdObj == null) {
+                        result.put("message", "操作已确认，但缺少目标相册参数");
+                    } else {
+                        Long albumId = ((Number) albumIdObj).longValue();
+                        boolean isDeletePicture = Boolean.TRUE.equals(params.get("isDeletePicture"));
+                        albumTools.deleteAlbum(albumId, isDeletePicture, userId);
+                        result.put("albumId", albumId);
+                        result.put("message", "相册已删除"
+                                + (isDeletePicture ? "，相册内照片已移入回收站" : "，相册内照片未受影响"));
+                    }
+                }
+                case "REMOVE_PICTURES" -> {
+                    Object albumIdObj = params.get("albumId");
+                    List<String> fileIds = asStringList(params.get("fileIds"));
+                    if (albumIdObj == null || fileIds.isEmpty()) {
+                        result.put("message", "操作已确认，但缺少目标相册或照片参数");
+                    } else {
+                        Long albumId = ((Number) albumIdObj).longValue();
+                        albumTools.removePicturesFromAlbum(fileIds, albumId, userId);
+                        result.put("albumId", albumId);
+                        result.put("message", "已从相册移除 " + fileIds.size() + " 张照片");
+                    }
                 }
                 default -> {
                     result.put("message", "操作已执行: " + actionType);
@@ -277,9 +357,69 @@ public class AiServiceImpl implements AiService {
         return sb.toString();
     }
 
+    /**
+     * 从本会话历史消息中提取最近一次查询出的照片 fileId（photos 类型消息的 extra）。
+     *
+     * <p>目的：用户说「用这些照片生成网页 / 把它们加入相册」时，模型可直接复用上下文结果，
+     * 无需再次调用 searchPhotos 重新查询。
+     */
+    private List<String> loadRecentPhotoIds(AiMessageMapper mapper, String sessionId) {
+        try {
+            List<AiMessage> messages = mapper.selectBySessionId(sessionId);
+            if (messages == null || messages.isEmpty()) {
+                return List.of();
+            }
+            // 倒序找最近一条 photos 消息
+            for (int i = messages.size() - 1; i >= 0; i--) {
+                AiMessage m = messages.get(i);
+                if (m == null || !"photos".equals(m.getContentType()) || m.getExtra() == null) {
+                    continue;
+                }
+                List<Map<String, Object>> photos =
+                        objectMapper.readValue(m.getExtra(), new TypeReference<>() {});
+                List<String> ids = photos.stream()
+                        .map(p -> p.get("fileId"))
+                        .filter(java.util.Objects::nonNull)
+                        .map(String::valueOf)
+                        .toList();
+                if (!ids.isEmpty()) {
+                    log.info("[AI] 复用会话历史照片 {} 张（来自消息 id={}）", ids.size(), m.getId());
+                    return ids;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[AI] 解析历史照片上下文失败（忽略，转为重新查询）: {}", e.getMessage());
+        }
+        return List.of();
+    }
+
     private String extractAlbumName(String input) {
         String name = input.replaceAll("(创建|新建|一个|名为|叫做|相册)", "").trim();
         return name.isBlank() ? "新相册" : name;
+    }
+
+    /** 安全取字符串：null / "null" / 空白 一律返回 null */
+    private String asString(Object o) {
+        if (o == null) {
+            return null;
+        }
+        String s = String.valueOf(o).trim();
+        return (s.isEmpty() || "null".equalsIgnoreCase(s)) ? null : s;
+    }
+
+    /** 安全取字符串列表（JSON 数组字段） */
+    private List<String> asStringList(Object o) {
+        if (!(o instanceof List<?> list)) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (Object item : list) {
+            String s = asString(item);
+            if (s != null) {
+                result.add(s);
+            }
+        }
+        return result;
     }
 
     private String toJsonQuietly(Object o) {
@@ -287,6 +427,87 @@ public class AiServiceImpl implements AiService {
             return objectMapper.writeValueAsString(o);
         } catch (Exception e) {
             return "{}";
+        }
+    }
+
+    /**
+     * 构造 SSE 事件：非字符串 data 统一序列化为 JSON 字符串。
+     *
+     * <p>动机：SseEmitter 对非 String 的 data 依赖 Spring 运行时选择 converter 序列化，
+     * 行为受 converter 注册顺序影响，历史上曾导致前端 JSON.parse 失败、确认卡片静默不渲染。
+     * String 类型的 data 由 StringHttpMessageConverter 直写，行为完全确定。
+     */
+    private Map<String, Object> toSseEvent(Map<String, Object> event) {
+        Object data = event.get("data");
+        if (data instanceof String || data instanceof byte[]) {
+            return event;
+        }
+        Map<String, Object> sse = new LinkedHashMap<>(event);
+        sse.put("data", toJsonQuietly(data));
+        return sse;
+    }
+
+    /**
+     * 会话标题生成：会话仍为默认标题时，用轻量 router 模型从本轮用户输入提炼（≤12字）。
+     *
+     * <p>同步执行（位于 SSE 流关闭之前）：标题落库后推送 {@code title} 事件，
+     * 前端即时更新会话列表，无需整表刷新。任何失败均不影响对话主流程。
+     */
+    private void maybeGenerateTitle(String sessionId, Long userId, String userInput,
+                                    Consumer<Map<String, Object>> sink) {
+        try {
+            AiSession session = sessionMapper.selectBySessionId(sessionId);
+            if (session == null) {
+                return;
+            }
+            String current = session.getTitle();
+            boolean needTitle = current == null || current.isBlank() || DEFAULT_SESSION_TITLE.equals(current);
+            if (!needTitle) {
+                return;
+            }
+            String title = generateTitle(userInput);
+            sessionMapper.updateTitle(sessionId, userId, title);
+            Map<String, Object> ev = new LinkedHashMap<>();
+            ev.put("type", "title");
+            ev.put("data", title);
+            sink.accept(ev);
+            log.info("[AI] 会话标题已生成 sessionId={} title={}", sessionId, title);
+        } catch (Exception e) {
+            // 标题生成失败不影响对话主流程
+            log.warn("[AI] 会话标题生成失败 sessionId={}", sessionId, e);
+        }
+    }
+
+    /** 用 router 模型提炼标题；模型未配置或调用失败时兜底截取用户输入前12字 */
+    private String generateTitle(String userInput) {
+        String fallback = userInput.length() > 12 ? userInput.substring(0, 12) : userInput;
+        if (routerModel == null) {
+            return fallback;
+        }
+        try {
+            String prompt = """
+                    请为下面的对话生成一个简洁的会话标题，要求：
+                    1. 不超过12个字，简体中文
+                    2. 概括用户的核心意图（如「查询南京照片」「创建西藏相册」）
+                    3. 不要任何标点符号、引号、序号
+                    4. 只输出标题本身，不要解释
+
+                    用户输入：%s
+                    """.formatted(userInput.length() > 200 ? userInput.substring(0, 200) : userInput);
+            String title = routerModel.chat(prompt);
+            if (title == null) {
+                return fallback;
+            }
+            title = title.trim()
+                    .replaceAll("^[\"'“”「『]+|[\"'“”」』]+$", "")
+                    .replaceAll("\\s+", "");
+            if (title.isEmpty()) {
+                return fallback;
+            }
+            return title.length() > 12 ? title.substring(0, 12) : title;
+        } catch (Exception e) {
+            log.warn("[AI] 标题模型调用失败，使用兜底标题: {}", fallback);
+            return fallback;
         }
     }
 
