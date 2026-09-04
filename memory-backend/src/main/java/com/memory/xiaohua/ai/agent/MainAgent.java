@@ -242,6 +242,9 @@ public class MainAgent {
                   ⚠️ 注意：它**无法按相册筛选**，只能按照片自身属性检索；涉及「某个具体相册里的照片」时请改用 searchPhotosByAlbum。
                 - searchPhotosByAlbum：按相册查询照片（纯读）。传入相册名称或相册ID，返回该相册内的所有照片及其 fileId。
                   用于「某相册里有哪些照片」「XX 相册里的照片」类需求；只有它能按相册维度检索。
+                - getPhotosExif：查询照片的EXIF拍摄信息（纯读）。返回拍摄时间、地点、设备、尺寸、ISO、光圈、快门、
+                  焦距、白平衡等详情。用于「这两张照片的EXIF」「用什么设备拍的」「查看拍摄参数」类需求；
+                  照片来自用户选中的照片或最近查询结果时 fileIdsJson 传[]即可自动使用。
                 - listAlbums：查询用户相册列表（纯读）。
                 - createAlbum：创建相册并可放入照片（写操作，生成确认卡片，用户确认后才真正执行）。
                 - addPicturesToAlbum：向已有相册添加照片（写操作，同上）。
@@ -267,6 +270,7 @@ public class MainAgent {
                 7. 生成网页时必须把照片 fileId 列表传入 generateHtmlPage 的 fileIdsJson 参数；
                    **绝不能把 fileId 写进需求文本当作图片地址**——网页里的图片地址由工具内部按 fileId 查出。
                 8. searchPhotos 结果为空时如实告知用户，不要继续执行依赖照片结果的写操作。
+                   用户问照片的 EXIF/拍摄参数（ISO、光圈、快门、设备等）时用 getPhotosExif，不要用 searchPhotos 反复试错。
                 9. 【避免重复查询】若本轮已调用过 searchPhotos 或 searchPhotosByAlbum，或系统提示中已给出「用户选中的照片」
                    /「最近查询到的照片」ID 列表，用户再说「用这些照片/把它们/生成网页/加入相册」时，
                    直接把这些 ID 传入工具（或传 [] 让系统自动使用），**不要调用 searchPhotos / searchPhotosByAlbum 去"找"它们**。

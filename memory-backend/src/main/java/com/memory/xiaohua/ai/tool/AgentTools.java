@@ -142,6 +142,83 @@ public class AgentTools {
                 + toJsonQuietly(fileIds);
     }
 
+    /**
+     * EXIF 拍摄信息查询（读）：按 fileId 走参数化 SQL，返回拍摄参数详情。
+     *
+     * <p>不走 text2sql：用户指「这两张/选中的照片」时应按 fileId 精确直查，
+     * text2sql 面向自然语言条件筛选，不适合精确 ID 维度的详情查询。
+     * 数据来源：file（时间/设备/尺寸）+ image_meta_data（ISO/光圈/快门/焦距等）+ location（地点）。
+     */
+    @Tool("查询指定照片的EXIF拍摄信息（拍摄时间、地点、设备、尺寸、ISO、光圈、快门、焦距、白平衡、测光模式等详情）。"
+            + "用于「这两张照片的EXIF」「照片用什么设备拍的」「查看拍摄参数」类需求；"
+            + "照片来自用户选中的照片或最近查询结果时 fileIdsJson 传[]即可自动使用")
+    public String getPhotosExif(
+            @P("照片fileId列表，JSON数组字符串。若用用户选中的照片或最近查询到的照片，传[]即可自动使用") String fileIdsJson) {
+        AgentToolContext ctx = AgentToolContext.current();
+        List<String> fileIds = resolvePhotoIds(ctx, fileIdsJson);
+        if (fileIds.isEmpty()) {
+            return "未指定照片且上下文中没有可用照片。请先调用 searchPhotos 查询照片，"
+                    + "或让用户在界面选中照片后再查询 EXIF。";
+        }
+        validatePhotoOwnership(fileIds);
+
+        String placeholders = String.join(",", java.util.Collections.nCopies(fileIds.size(), "?"));
+        List<Object> args = new ArrayList<>(fileIds);
+        args.add(ctx.getUserId());
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT f.file_id, f.origin_file_name, f.make, f.model, f.date_time_original, f.width, f.height, "
+                        + "m.iso, m.f_number, m.exposure_time, m.shutter_speed, m.focal_length, m.focal_length35, "
+                        + "m.white_balance, m.metering_mode, m.exposure_program, m.software, m.altitude, "
+                        + "l.province, l.city, l.district "
+                        + "FROM file f "
+                        + "LEFT JOIN image_meta_data m ON m.file_id = f.file_id "
+                        + "LEFT JOIN location l ON l.file_id = f.file_id "
+                        + "JOIN user_file uf ON uf.file_id = f.file_id "
+                        + "WHERE f.file_id IN (" + placeholders + ") AND uf.user_id = ? AND uf.is_deleted = 0",
+                args.toArray());
+        if (rows.isEmpty()) {
+            return "未找到这些照片的EXIF信息。";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("共 ").append(rows.size()).append(" 张照片的EXIF信息：");
+        for (Map<String, Object> r : rows) {
+            sb.append("\n- ").append(r.get("origin_file_name"));
+            Object time = r.get("date_time_original");
+            sb.append("\n  拍摄时间：").append(time == null ? "未知" : time);
+            String loc = joinLocation(r);
+            if (!loc.isEmpty()) {
+                sb.append("\n  地点：").append(loc);
+            }
+            StringBuilder device = new StringBuilder();
+            appendIfPresent(device, r, "make", "", " ");
+            appendIfPresent(device, r, "model", "", "");
+            if (device.length() > 0) {
+                sb.append("\n  设备：").append(device);
+            }
+            Object w = r.get("width");
+            Object h = r.get("height");
+            if (w != null && h != null) {
+                sb.append("\n  尺寸：").append(w).append("x").append(h);
+            }
+            StringBuilder param = new StringBuilder();
+            appendIfPresent(param, r, "iso", "ISO ", "");
+            appendIfPresent(param, r, "f_number", "，光圈：F", "");
+            appendIfPresent(param, r, "exposure_time", "，曝光时间：", "s");
+            appendIfPresent(param, r, "focal_length", "，焦距：", "mm");
+            appendIfPresent(param, r, "focal_length35", "（等效", "mm）");
+            appendIfPresent(param, r, "white_balance", "，白平衡：", "");
+            appendIfPresent(param, r, "metering_mode", "，测光：", "");
+            appendIfPresent(param, r, "exposure_program", "，曝光程序：", "");
+            appendIfPresent(param, r, "software", "，处理软件：", "");
+            appendIfPresent(param, r, "altitude", "，海拔：", "m");
+            if (param.length() > 0) {
+                sb.append("\n  拍摄参数：").append(param);
+            }
+        }
+        return sb.toString();
+    }
+
     // ==================== 写操作（草稿 + 人工确认） ====================
 
     /**
@@ -522,6 +599,24 @@ public class AgentTools {
                 .filter(u -> u != null && !u.isBlank())
                 .limit(6)
                 .toList();
+    }
+
+    /** 拼接省市区为可读地点（字段存在才拼） */
+    private String joinLocation(Map<String, Object> row) {
+        StringBuilder loc = new StringBuilder();
+        appendIfPresent(loc, row, "province", "", "");
+        appendIfPresent(loc, row, "city", " ", "");
+        appendIfPresent(loc, row, "district", " ", "");
+        return loc.toString().trim();
+    }
+
+    /** 拼接非空字段：值存在且非空时追加「label + 值 + sep」，否则跳过 */
+    private void appendIfPresent(StringBuilder sb, Map<String, Object> row, String key, String label, String sep) {
+        Object v = row.get(key);
+        if (v == null || String.valueOf(v).isBlank()) {
+            return;
+        }
+        sb.append(label).append(v).append(sep);
     }
 
     /** 生成确认后真正执行的参数 JSON（AiServiceImpl.execute 消费） */

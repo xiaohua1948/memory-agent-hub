@@ -83,6 +83,9 @@ public class Text2SqlService {
                 8. 禁止使用 ? 占位符，所有条件值一律写成字面量（如 city = '南京'）。用户隔离由系统注入，不要写 user_id 条件。
                 9. 文件大小条件使用 f.size 字段（BIGINT，单位字节）：1MB=1048576字节、1KB=1024字节。
                    例：用户说「2MB以上」→ f.size > 2097152；「小于500KB」→ f.size < 512000。
+                10. EXIF 拍摄参数（ISO/光圈/快门/焦距/白平衡等）在 image_meta_data 表（建议别名 m），
+                   与 file 通过 m.file_id = f.file_id 一对一关联；拍摄时间 date_time_original、
+                   设备 make/model 在 file 表，不在 image_meta_data。
 
                 ## 用户问题
                 %s
@@ -122,7 +125,24 @@ public class Text2SqlService {
                   ⚠️ province/city/district 存的是行政全称，带「省/市/区」后缀，
                      例如 province='四川省'、city='南京市'、city='西安市'、district='雁塔区'。
                 - picture_tag(id BIGINT, file_id VARCHAR, image_type VARCHAR, tag_name VARCHAR)
-                - image_meta_data(file_id VARCHAR, ...)
+                - image_meta_data(file_id VARCHAR,  -- 与 file.file_id 一一对应（EXIF 拍摄参数表）
+                       iso INT,                     -- ISO 感光度
+                       f_number DOUBLE,             -- F值（光圈）
+                       exposure_time VARCHAR,       -- 曝光时间（秒）
+                       shutter_speed DOUBLE,        -- 快门速度值
+                       aperture_value DOUBLE,       -- 光圈值
+                       exposure_program VARCHAR,    -- 曝光程序
+                       focal_length DOUBLE,         -- 实际焦距(mm)
+                       focal_length35 DOUBLE,       -- 等效35mm焦距
+                       metering_mode VARCHAR,       -- 测光模式
+                       white_balance VARCHAR,       -- 白平衡
+                       color_space VARCHAR,         -- 色彩空间
+                       sensing_method VARCHAR,      -- 传感器感应方式
+                       scene_type VARCHAR,          -- 拍摄场景类型
+                       subject_distance DOUBLE,     -- 拍摄对象距离(米)
+                       altitude DOUBLE,             -- GPS 海拔(米)
+                       software VARCHAR,            -- 处理软件
+                       version VARCHAR)             -- EXIF 版本
                 - video_meta_data(file_id VARCHAR, ...)
                 """;
     }
