@@ -8,7 +8,7 @@
       title="AI 智能助手"
     >
       <i-ep-close v-if="panelVisible" class="fab-icon" />
-      <i-ep-magic-stick v-else class="fab-icon" />
+      <i-ri:robot-2-fill v-else class="fab-icon" />
     </div>
 
     <!-- 展开面板 -->
@@ -22,7 +22,7 @@
         <!-- 顶栏（可拖动） -->
         <div class="agent-panel-header" @mousedown="startDrag">
           <div class="panel-title">
-            <i-ep-magic-stick class="title-icon" />
+            <i-ri:robot-2-line class="title-icon" />
             <span>AI 智能助手</span>
           </div>
           <div class="panel-ops" @mousedown.stop>
@@ -39,7 +39,7 @@
           </div>
         </div>
 
-        <!-- 会话切换 + Agent 切换 -->
+        <!-- 会话切换（任务路由统一由主 Agent 判别，不再区分 agent 类型） -->
         <div class="agent-toolbar">
           <el-select
             v-model="currentSessionId"
@@ -55,18 +55,12 @@
               :value="s.sessionId"
             />
           </el-select>
-          <el-segmented
-            v-model="agentType"
-            :options="agentOptions"
-            size="small"
-            @change="handleAgentChange"
-          />
         </div>
 
         <!-- 消息列表 -->
         <div ref="messagesRef" class="agent-messages">
           <div v-if="messages.length === 0" class="agent-empty">
-            <i-ep-magic-stick class="empty-icon" />
+            <i-ri:robot-2-line class="empty-icon" />
             <p>你好，我是 AI 智能助手 🦐</p>
             <p class="empty-tip">可以帮你查找照片、整理相册，或生成网页</p>
           </div>
@@ -78,7 +72,14 @@
           >
             <!-- 用户消息 -->
             <template v-if="msg.role === 'user'">
-              <div class="bubble user-bubble">{{ msg.content }}</div>
+              <div v-if="msg.content" class="bubble-wrap">
+                <div class="bubble user-bubble">{{ msg.content }}</div>
+                <el-tooltip content="复制文本" placement="top">
+                  <span class="copy-btn" @click.stop="copyText(msg.content)">
+                    <i-ep-copy-document class="copy-icon" />
+                  </span>
+                </el-tooltip>
+              </div>
               <div v-if="msg.thumbnails?.length" class="msg-thumbs">
                 <img
                   v-for="(t, i) in msg.thumbnails"
@@ -94,7 +95,14 @@
             <!-- AI 消息 -->
             <template v-else>
               <!-- 文本 -->
-              <div v-if="msg.content" class="bubble ai-bubble">{{ msg.content }}</div>
+              <div v-if="msg.content" class="bubble-wrap">
+                <div class="bubble ai-bubble">{{ msg.content }}</div>
+                <el-tooltip content="复制文本" placement="top">
+                  <span class="copy-btn" @click.stop="copyText(msg.content)">
+                    <i-ep-copy-document class="copy-icon" />
+                  </span>
+                </el-tooltip>
+              </div>
 
               <!-- 照片结果网格 -->
               <div v-if="msg.photos?.length" class="msg-photos">
@@ -136,11 +144,44 @@
                     <span v-if="msg.pendingAction.preview.albumName">
                       相册：{{ msg.pendingAction.preview.albumName }}
                     </span>
-                    <span v-if="msg.pendingAction.params?.description">
-                      描述：{{ msg.pendingAction.params.description }}
+                    <span
+                      v-if="
+                        msg.pendingAction.preview.newName &&
+                        msg.pendingAction.preview.newName !==
+                          msg.pendingAction.preview.oldName
+                      "
+                    >
+                      改名：{{ msg.pendingAction.preview.oldName }} →
+                      {{ msg.pendingAction.preview.newName }}
+                    </span>
+                    <span
+                      v-if="
+                        msg.pendingAction.preview.newDescription &&
+                        msg.pendingAction.preview.newDescription !==
+                          msg.pendingAction.preview.oldDescription
+                      "
+                    >
+                      新描述：{{ msg.pendingAction.preview.newDescription }}
+                    </span>
+                    <span
+                      v-if="
+                        msg.pendingAction.params?.description &&
+                        !['UPDATE_ALBUM', 'DELETE_ALBUM'].includes(
+                          msg.pendingAction.type as string,
+                        )
+                      "
+                    >
+                      {{ msg.pendingAction.params.description }}
+                    </span>
+                    <span
+                      v-if="msg.pendingAction.preview.deleteWarning"
+                      class="pending-danger"
+                    >
+                      注意：{{ msg.pendingAction.preview.deleteWarning }}
                     </span>
                     <span v-if="msg.pendingAction.preview.count">
-                      共 {{ msg.pendingAction.preview.count }} 张照片
+                      {{ msg.pendingAction.type === 'REMOVE_PICTURES' ? '移除' : '共' }}
+                      {{ msg.pendingAction.preview.count }} 张照片
                     </span>
                   </div>
                 </div>
@@ -240,9 +281,15 @@
           </el-button>
         </div>
 
-        <!-- 右下角缩放手柄 -->
-        <div class="resize-handle" @mousedown.stop.prevent="startResize">
-          <i-ep-full-screen class="resize-icon" />
+        <!-- 四条边 + 四个角缩放手柄 -->
+        <div
+          v-for="h in resizeHandles"
+          :key="h.dir"
+          :class="['resize-handle', `resize-${h.dir}`]"
+          :title="h.title"
+          @mousedown.stop.prevent="startResize($event, h.dir)"
+        >
+          <i-ep-full-screen v-if="h.dir === 'se'" class="resize-icon" />
         </div>
       </div>
     </transition>
@@ -278,6 +325,20 @@ import {
 } from '@/api/ai/ai';
 import type { AiChatEvent } from '@/api/ai/ai';
 
+// 缩放方向：n/s/e/w 为四边，组合为四角
+type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+
+const resizeHandles: { dir: ResizeDir; title: string }[] = [
+  { dir: 'n', title: '上下拉伸' },
+  { dir: 's', title: '上下拉伸' },
+  { dir: 'e', title: '左右拉伸' },
+  { dir: 'w', title: '左右拉伸' },
+  { dir: 'ne', title: '自由缩放' },
+  { dir: 'nw', title: '自由缩放' },
+  { dir: 'se', title: '自由缩放' },
+  { dir: 'sw', title: '自由缩放' },
+];
+
 interface ChatMsg {
   id: string;
   role: 'user' | 'assistant';
@@ -291,13 +352,7 @@ interface ChatMsg {
   actionResult?: string;
 }
 
-const agentOptions = [
-  { label: 'Data Agent', value: 'data' },
-  { label: 'Code Agent', value: 'code' },
-];
-
 const panelVisible = ref(false);
-const agentType = ref<API.AgentType>('data');
 const sessions = ref<API.AiSession[]>([]);
 const currentSessionId = ref('');
 const messages = ref<ChatMsg[]>([]);
@@ -365,8 +420,9 @@ function savePanelLayout() {
   }
 }
 
-let dragging = false;
-let resizing = false;
+const dragging = ref(false);
+const resizing = ref(false);
+let resizeDir: ResizeDir = 'se';
 let startX = 0;
 let startY = 0;
 let origX = 0;
@@ -385,7 +441,7 @@ function setIframesInteractable(interactable: boolean) {
 }
 
 function startDrag(e: MouseEvent) {
-  dragging = true;
+  dragging.value = true;
   startX = e.clientX;
   startY = e.clientY;
   origX = panelSize.x;
@@ -396,23 +452,26 @@ function startDrag(e: MouseEvent) {
 }
 
 function onDrag(e: MouseEvent) {
-  if (!dragging) return;
+  if (!dragging.value) return;
   panelSize.x = clamp(origX + e.clientX - startX, 0, Math.max(0, window.innerWidth - panelSize.width));
   panelSize.y = clamp(origY + e.clientY - startY, 0, Math.max(0, window.innerHeight - panelSize.height));
 }
 
 function stopDrag() {
-  dragging = false;
+  dragging.value = false;
   setIframesInteractable(true);
   document.removeEventListener('mousemove', onDrag);
   document.removeEventListener('mouseup', stopDrag);
   savePanelLayout();
 }
 
-function startResize(e: MouseEvent) {
-  resizing = true;
+function startResize(e: MouseEvent, dir: ResizeDir) {
+  resizing.value = true;
+  resizeDir = dir;
   startX = e.clientX;
   startY = e.clientY;
+  origX = panelSize.x;
+  origY = panelSize.y;
   origW = panelSize.width;
   origH = panelSize.height;
   setIframesInteractable(false);
@@ -421,22 +480,78 @@ function startResize(e: MouseEvent) {
 }
 
 function onResize(e: MouseEvent) {
-  if (!resizing) return;
-  panelSize.width = clamp(origW + e.clientX - startX, MIN_W, Math.max(MIN_W, window.innerWidth - panelSize.x - 8));
-  panelSize.height = clamp(origH + e.clientY - startY, MIN_H, Math.max(MIN_H, window.innerHeight - panelSize.y - 8));
+  if (!resizing.value) return;
+  const dx = e.clientX - startX;
+  const dy = e.clientY - startY;
+  let w = origW;
+  let h = origH;
+  let x = origX;
+  let y = origY;
+
+  // 向右：左边固定
+  if (resizeDir.includes('e')) {
+    w = clamp(origW + dx, MIN_W, Math.max(MIN_W, window.innerWidth - origX - 8));
+  }
+  // 向下：上边固定
+  if (resizeDir.includes('s')) {
+    h = clamp(origH + dy, MIN_H, Math.max(MIN_H, window.innerHeight - origY - 8));
+  }
+  // 向左：右边固定，同步修正 x，避免拖出视口后尺寸与位置不一致
+  if (resizeDir.includes('w')) {
+    const right = origX + origW;
+    w = clamp(origW - dx, MIN_W, Math.max(MIN_W, right));
+    x = right - w;
+  }
+  // 向上：下边固定，同步修正 y
+  if (resizeDir.includes('n')) {
+    const bottom = origY + origH;
+    h = clamp(origH - dy, MIN_H, Math.max(MIN_H, bottom));
+    y = bottom - h;
+  }
+
+  panelSize.width = w;
+  panelSize.height = h;
+  panelSize.x = x;
+  panelSize.y = y;
 }
 
 function stopResize() {
-  resizing = false;
+  resizing.value = false;
   setIframesInteractable(true);
   document.removeEventListener('mousemove', onResize);
   document.removeEventListener('mouseup', stopResize);
   savePanelLayout();
 }
 
+// 复制消息文本（优先 Clipboard API，非安全上下文降级到 execCommand）
+async function copyText(text?: string) {
+  if (!text) return;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (!ok) throw new Error('execCommand copy failed');
+    }
+    ElMessage.success('已复制');
+  } catch {
+    ElMessage.error('复制失败，请手动选择文本');
+  }
+}
+
 function initPanelPosition() {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
+  // 视口变小后先收敛尺寸，避免恢复的布局超出屏幕
+  panelSize.width = clamp(panelSize.width, MIN_W, Math.max(MIN_W, vw - 16));
+  panelSize.height = clamp(panelSize.height, MIN_H, Math.max(MIN_H, vh - 16));
   if (layoutLoaded) {
     // 已从缓存恢复布局：仅做边界校正，防止窗口尺寸变化后跑出视口
     panelSize.x = clamp(panelSize.x, 0, Math.max(0, vw - panelSize.width));
@@ -455,7 +570,7 @@ function previewUrls(urlList: string[], index: number) {
 }
 
 function previewPhotos(photos: API.AiPhotoResult[], index: number) {
-  const urlList = photos.map((p) => p.fileUrl || p.thumbnailUrl);
+  const urlList = photos.map((p) => p.fileUrl || p.thumbnailUrl || '');
   previewUrls(urlList, index);
 }
 
@@ -480,8 +595,7 @@ function closePanel() {
 }
 
 function sessionLabel(s: API.AiSession): string {
-  const tag = s.agentType === 'code' ? '网页' : '数据';
-  return `${s.title || '新会话'}（${tag}）`;
+  return s.title || '新会话';
 }
 
 function scrollToBottom() {
@@ -517,10 +631,6 @@ async function initChat() {
 // 切换会话（加载历史消息）
 async function switchSession(sessionId: string) {
   currentSessionId.value = sessionId;
-  const session = sessions.value.find((s) => s.sessionId === sessionId);
-  if (session) {
-    agentType.value = session.agentType;
-  }
   await loadMessages(sessionId);
 }
 
@@ -532,7 +642,11 @@ async function handleSwitchSession(sessionId: string) {
 function parsePendingAction(raw?: string): API.PendingAction | undefined {
   if (!raw) return undefined;
   try {
-    const o = JSON.parse(raw);
+    const o = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!o || !o.actionId) {
+      console.warn('[AgentChat] 确认卡片数据缺少 actionId:', raw);
+      return undefined;
+    }
     return {
       actionId: o.actionId,
       type: o.actionType,
@@ -540,9 +654,24 @@ function parsePendingAction(raw?: string): API.PendingAction | undefined {
       params: { description: o.description },
       preview: o.preview || {},
     };
-  } catch {
+  } catch (e) {
+    console.warn('[AgentChat] 确认卡片数据解析失败:', raw, e);
     return undefined;
   }
+}
+
+// extra(JSON字符串) → HTML 原文；兼容旧数据的裸 HTML 文本
+function extractHtmlExtra(raw?: string): string {
+  if (!raw) return '';
+  try {
+    const o = JSON.parse(raw);
+    if (o && typeof o === 'object' && typeof o.html === 'string') {
+      return o.html;
+    }
+  } catch {
+    // 非 JSON → 视为旧数据中的 HTML 原文
+  }
+  return raw;
 }
 
 // 从后端 AiMessage[] 转换为前端 ChatMsg[]
@@ -567,7 +696,8 @@ function toChatMsg(m: API.AiMessage): ChatMsg {
       break;
     case 'html':
       base.content = '已生成网页';
-      base.html = m.extra || m.content;
+      // extra 兼容两种格式：JSON 对象 {"html":"..."}（新）与 HTML 原文（历史数据）
+      base.html = extractHtmlExtra(m.extra) || m.content;
       break;
     default:
       base.content = m.content;
@@ -596,7 +726,8 @@ async function handleNewSession() {
 
 async function createCurrentSession() {
   try {
-    const res = await createSession({ agentType: agentType.value });
+    // agent 类型已统一由主 Agent 判别，固定传 mixed（仅为兼容后端字段）
+    const res = await createSession({ agentType: 'mixed' });
     if (res.code === 200) {
       const data = res.data as API.AiSession;
       currentSessionId.value = data.sessionId;
@@ -613,16 +744,7 @@ async function createCurrentSession() {
   }
 }
 
-// 切换 Agent 类型：自动新建对应类型的会话
-async function handleAgentChange(val: string | number | boolean) {
-  const type = String(val) as API.AgentType;
-  // 若当前会话类型与目标一致，不重建
-  const cur = sessions.value.find((s) => s.sessionId === currentSessionId.value);
-  if (cur && cur.agentType === type && messages.value.length === 0) {
-    return;
-  }
-  await createCurrentSession();
-}
+// （Agent 类型切换已移除：所有任务统一由主 Agent 判别路由）
 
 // 发送消息
 async function send() {
@@ -654,7 +776,6 @@ async function send() {
     await streamChat(
       {
         sessionId: currentSessionId.value || undefined,
-        agentType: agentType.value,
         content,
         fileIds,
       },
@@ -683,7 +804,7 @@ function parsePhotos(raw?: string): API.AiPhotoResult[] | undefined {
   }
 }
 
-// 处理后端 SSE 事件（text / card / photos / html / done / error）
+// 处理后端 SSE 事件（text / card / photos / html / tool / done / error）
 function handleChatEvent(ev: AiChatEvent) {
   switch (ev.type) {
     case 'text': {
@@ -727,6 +848,33 @@ function handleChatEvent(ev: AiChatEvent) {
       }
       break;
     }
+    case 'tool': {
+      // 主 Agent 工具调用进度：data 为 {name, arguments} JSON 字符串
+      try {
+        const info = JSON.parse(ev.data) as { name?: string };
+        if (info?.name) {
+          messages.value.push({
+            id: genMsgId(),
+            role: 'assistant',
+            content: `正在执行子任务：${info.name}`,
+          });
+        }
+      } catch {
+        // 忽略格式异常的进度事件
+      }
+      break;
+    }
+    case 'title': {
+      // 后端已根据对话内容生成会话标题，即时更新会话列表展示
+      const title = (ev.data || '').trim();
+      if (title) {
+        const target = sessions.value.find((s) => s.sessionId === currentSessionId.value);
+        if (target) {
+          target.title = title;
+        }
+      }
+      break;
+    }
     case 'error': {
       pushError(ev.data || '请求失败');
       break;
@@ -762,9 +910,10 @@ async function confirmAction(msg: ChatMsg) {
       msg.actionStatus = 'error';
       ElMessage.error(res.message || '执行失败');
     }
-  } catch {
+  } catch (e: any) {
     msg.actionStatus = 'error';
-    ElMessage.error('执行失败');
+    // 透出后端具体原因（如"操作已过期，请重新发起"）
+    ElMessage.error(e?.response?.data?.message || e?.message || '执行失败');
   }
 }
 
@@ -889,6 +1038,16 @@ onUnmounted(() => {
   user-select: none;
 }
 
+/* 消息区允许鼠标选中复制（覆盖 #basicLayout 布局级的 user-select: none） */
+.agent-messages {
+  user-select: text;
+}
+
+/* 拖拽/缩放面板期间临时禁用选中，避免拖动时误选文字 */
+.agent-panel.is-interacting .agent-messages {
+  user-select: none;
+}
+
 .agent-slide-enter-active,
 .agent-slide-leave-active {
   transition: all 0.25s ease;
@@ -1003,6 +1162,63 @@ onUnmounted(() => {
 .agent-msg.is-ai {
   align-self: flex-start;
   align-items: flex-start;
+}
+
+/* 气泡 + 复制按钮：用户消息按钮在左，AI 消息按钮在右 */
+.bubble-wrap {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.agent-msg.is-user .bubble-wrap {
+  flex-direction: row-reverse;
+}
+
+.bubble-wrap .bubble {
+  min-width: 0;
+}
+
+.copy-btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b0b3b8;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+/* 触屏设备无 hover，直接常显 */
+.agent-msg:hover .copy-btn {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .copy-btn {
+    opacity: 1;
+  }
+}
+
+.copy-btn:hover {
+  color: #3d7eff;
+  background: rgba(61, 126, 255, 0.1);
+}
+
+.copy-btn:active {
+  transform: scale(0.9);
+}
+
+.copy-icon {
+  font-size: 14px;
 }
 
 .bubble {
@@ -1147,6 +1363,11 @@ onUnmounted(() => {
   gap: 2px;
 }
 
+.pending-danger {
+  color: #f56c6c;
+  font-weight: 500;
+}
+
 .pending-actions {
   margin-top: 10px;
   display: flex;
@@ -1275,29 +1496,90 @@ onUnmounted(() => {
   padding: 0;
 }
 
-/* 右下角缩放手柄 */
+/* 四边 + 四角缩放手柄 */
 .resize-handle {
   position: absolute;
+  z-index: 10;
+}
+
+/* 四条边：细条热区，内缩避让四角手柄 */
+.resize-n,
+.resize-s {
+  left: 18px;
+  right: 18px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.resize-n {
+  top: 0;
+}
+
+.resize-s {
+  bottom: 0;
+}
+
+.resize-e,
+.resize-w {
+  top: 18px;
+  bottom: 18px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.resize-e {
+  right: 0;
+}
+
+.resize-w {
+  left: 0;
+}
+
+/* 四个角 */
+.resize-nw,
+.resize-ne,
+.resize-sw,
+.resize-se {
+  width: 18px;
+  height: 18px;
+}
+
+.resize-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.resize-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.resize-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.resize-se {
   right: 0;
   bottom: 0;
-  width: 24px;
-  height: 24px;
   cursor: nwse-resize;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10;
   color: #b0b3b8;
   border-bottom-right-radius: 16px;
 }
 
-.resize-icon {
-  font-size: 15px;
-  pointer-events: none;
+.resize-se:hover {
+  color: #3d7eff;
 }
 
-.resize-handle:hover {
-  color: #3d7eff;
+.resize-icon {
+  font-size: 14px;
+  pointer-events: none;
 }
 
 /* 选照片弹窗 */

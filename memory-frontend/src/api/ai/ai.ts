@@ -39,9 +39,9 @@ export function agentExecute(data: { actionId: string }): Promise<API.BaseRespon
 
 /** SSE 事件（后端 AiController 推送） */
 export interface AiChatEvent {
-  /** 事件名：text / card / photos / html / done / error */
+  /** 事件名：text / card / photos / html / tool / title / done / error */
   type: string;
-  /** 事件载荷：text/html 为原文，card/photos 为 JSON 字符串，error 为错误信息 */
+  /** 事件载荷：text/html/title 为原文，card/photos/tool 为 JSON 字符串，error 为错误信息 */
   data: string;
 }
 

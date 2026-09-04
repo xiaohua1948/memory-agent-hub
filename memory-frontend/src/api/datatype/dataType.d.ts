@@ -239,14 +239,14 @@ declare namespace API {
 
   // ==================== AI 智能助手 ====================
 
-  /** Agent 类型：data = Data Agent；code = Code Agent */
-  type AgentType = 'data' | 'code'
+  /** Agent 类型：data = Data Agent；code = Code Agent；mixed = 统一主 Agent（当前默认） */
+  type AgentType = 'data' | 'code' | 'mixed'
 
   interface AiChatRequest {
     /** 会话ID（新建会话时可省略，由后端返回） */
     sessionId?: string
-    /** data: Data Agent；code: Code Agent */
-    agentType: AgentType
+    /** data: Data Agent；code: Code Agent；mixed: 主 Agent 统一编排（当前默认） */
+    agentType?: AgentType
     /** 本轮用户消息内容 */
     content: string
     /** 照片上下文 fileId 列表（Code Agent 使用） */
@@ -258,6 +258,7 @@ declare namespace API {
     | 'UPDATE_ALBUM'
     | 'DELETE_ALBUM'
     | 'ADD_PICTURES'
+    | 'REMOVE_PICTURES'
 
   interface PendingActionPreview {
     thumbnails?: string[]
@@ -265,6 +266,13 @@ declare namespace API {
     albumName?: string
     albumId?: number
     input?: string
+    /** 修改相册信息（改名/改描述）预览 */
+    newName?: string
+    oldName?: string
+    newDescription?: string
+    oldDescription?: string
+    /** 删除相册警示文案 */
+    deleteWarning?: string
   }
 
   interface PendingAction {
