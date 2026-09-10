@@ -11,8 +11,10 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -39,6 +41,15 @@ import java.util.Map;
 @Slf4j
 @Component
 public class WebpageTools {
+
+    /**
+     * 最大生成次数（首次 + 重写）。
+     *
+     * <p>每次重写都是一次完整的 8000 token 生成，延迟与成本线性叠加，
+     * 因此上限压到 3 次：足以修掉「漏嵌照片 / 结构截断」这类高频问题，
+     * 又不至于让一次网页生成耗时过久。
+     */
+    private static final int MAX_ATTEMPTS = 3;
 
     private final JdbcTemplate jdbcTemplate;
     private final AiProperties properties;
@@ -75,9 +86,21 @@ public class WebpageTools {
         if (model == null) {
             throw new IllegalStateException("网页生成模型未配置");
         }
-        String userPrompt = ctx.contextText + "\n\n创意提示：" + prompt;
-        String html = model.chat(buildSystemPrompt() + "\n\n" + userPrompt);
-        html = extractHtml(html);
+        // 生成 → 校验 → 把缺陷清单回喂重写（最多 MAX_ATTEMPTS 次）。
+        // 校验是纯代码判定（零 token），只有重写才消耗 token，
+        // 因此比「生成一次 + 代码硬补」更能修好内容层面的问题（如漏嵌照片）。
+        String html = generateOnce(model, ctx, prompt, null);
+        List<String> issues = validate(html, ctx.urlByPlaceholder.size());
+        int attempt = 1;
+        while (!issues.isEmpty() && attempt < MAX_ATTEMPTS) {
+            log.warn("[AI][WebpageTools] 第 {} 次生成存在 {} 个缺陷：{}", attempt, issues.size(), issues);
+            html = generateOnce(model, ctx, prompt, issues);
+            issues = validate(html, ctx.urlByPlaceholder.size());
+            attempt++;
+        }
+        if (!issues.isEmpty()) {
+            log.warn("[AI][WebpageTools] 重写 {} 次后仍有缺陷，转由结构修复兜底：{}", attempt, issues);
+        }
 
         // 关键：token 上限导致 HTML 在 CSS/标签中途被截断时，先修复结构，否则浏览器无法渲染
         boolean truncated = isTruncated(html);
@@ -97,6 +120,75 @@ public class WebpageTools {
         log.info("[AI][WebpageTools] 网页生成完成，照片数={}，截断={}，未替换占位符残留={}",
                 ctx.urlByPlaceholder.size(), truncated, leftover);
         return result;
+    }
+
+    /**
+     * 单次生成。
+     *
+     * @param issues 上一轮的缺陷清单；为空表示首次生成
+     */
+    private String generateOnce(ChatModel model, PhotoContext ctx, String prompt, List<String> issues) {
+        String userPrompt = ctx.contextText + "\n\n创意提示：" + prompt;
+        if (issues != null && !issues.isEmpty()) {
+            // 回喂具体缺陷而非让模型自己猜——「哪里不对」说清楚，重写才有针对性
+            userPrompt += "\n\n【上一次生成存在以下问题，必须修正后重新输出完整 HTML】\n- "
+                    + String.join("\n- ", issues) + "\n请直接输出修正后的完整 HTML，不要解释。";
+        }
+        return extractHtml(model.chat(buildSystemPrompt() + "\n\n" + userPrompt));
+    }
+
+    /**
+     * 纯代码校验（零 token）：判定生成结果是否可用，返回缺陷清单。
+     *
+     * <p>只检查<b>结构性与完整性</b>问题（截断、漏嵌照片、占位符未用），
+     * 不评判美观——审美交给模型，可判定的事实交给代码。
+     */
+    private List<String> validate(String html, int photoCount) {
+        List<String> issues = new ArrayList<>();
+        if (html == null || html.isBlank()) {
+            issues.add("没有生成任何内容");
+            return issues;
+        }
+        String lower = html.toLowerCase(Locale.ROOT);
+        if (isTruncated(html)) {
+            issues.add("HTML 结构不完整（缺少 </html> 或 style/script 未闭合），必须输出完整文档并以 </body></html> 结尾");
+        }
+        if (photoCount > 0) {
+            int imgCount = countMatches(lower, "<img");
+            if (imgCount == 0) {
+                issues.add("一张照片都没有嵌入，必须为每个占位符写一个 <img> 标签");
+            } else if (imgCount < photoCount) {
+                issues.add("清单给了 " + photoCount + " 张照片，但你只嵌入了 " + imgCount + " 张，请补齐");
+            }
+            List<String> unused = unusedPlaceholders(lower, photoCount);
+            if (!unused.isEmpty()) {
+                issues.add("以下占位符没有用到：" + String.join("、", unused));
+            }
+        }
+        return issues;
+    }
+
+    /** 统计子串出现次数 */
+    private int countMatches(String text, String token) {
+        int count = 0;
+        int idx = 0;
+        while ((idx = text.indexOf(token, idx)) >= 0) {
+            count++;
+            idx += token.length();
+        }
+        return count;
+    }
+
+    /** 找出清单给了但正文未出现的占位符（最多列 5 个，避免提示过长） */
+    private List<String> unusedPlaceholders(String lowerHtml, int photoCount) {
+        List<String> unused = new ArrayList<>();
+        for (int i = 1; i <= photoCount && unused.size() < 5; i++) {
+            String token = "{{img_" + i + "}}";
+            if (!lowerHtml.contains(token)) {
+                unused.add("{{IMG_" + i + "}}");
+            }
+        }
+        return unused;
     }
 
     /** 判断 HTML 是否被截断：缺少 </html>，或 style/script 标签未闭合 */
@@ -204,6 +296,13 @@ public class WebpageTools {
                    再输出 <body> 内的照片区块，最后才是页脚等次要内容。
                    这样即使输出长度受限，照片部分也已经生成完毕。
                 8. 必须以 </body></html> 正常结尾，保证文档结构完整。
+
+                ## 版式模板（按创意提示选最接近的一种作骨架，可降低输出长度、减少被截断概率）
+                - 日记 / 游记：顶部标题 + 日期地点 → 按时间顺序的大图段落，每段配一句说明文字。
+                - 相册集：封面大图（第 1 张）→ 下方自适应网格铺满其余照片。
+                - 杂志风：首图全幅 + 大标题压图 → 分栏正文 + 穿插小图。
+                - 极简留白：居中单列，大间距，一次一张大图，配简短文案。
+                用户未指定风格时，照片多于 8 张用「相册集」，否则用「日记」。
                 """;
     }
 

@@ -1,7 +1,6 @@
 package com.memory.xiaohua.service.impl;
 
 import com.alibaba.fastjson.JSON;
-import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
@@ -702,55 +701,79 @@ public class FileServiceImpl implements FileService {
 
     /**
      * 由于minio获取的url最长为7天，所以需要定时更换数据库Url
+     * 加固：空 object_name 跳过；单条重签异常不影响整体；原图/缩略图独立重签。
      */
     @Override
     public void cronUpdateFileUrl() {
-        Wrapper<FileEntity> queryWrapper1 = new QueryWrapper<>();
         //更新照片链接
-        List<FileEntity> fileEntities = fileMapper.selectList(queryWrapper1);
+        List<FileEntity> fileEntities = fileMapper.selectList(new QueryWrapper<>());
         for (FileEntity fileEntity : fileEntities) {
             String fileId = fileEntity.getFileId();
             String fileObjectName = fileEntity.getFileObjectName();
             String thumbnailObjectName = fileEntity.getThumbnailObjectName();
-            String fileUrl = minioOSSUtil.getFileUrl(fileObjectName);
-            String thumbnailUrl = minioOSSUtil.getFileUrl(thumbnailObjectName);
             UpdateWrapper<FileEntity> updateWrapper1 = new UpdateWrapper<>();
             updateWrapper1.eq("file_id", fileId);
-            updateWrapper1.set("file_url", fileUrl);
-            updateWrapper1.set("thumbnail_url", thumbnailUrl);
-            fileMapper.update(updateWrapper1);
+            boolean needUpdate = false;
+            try {
+                if (fileObjectName != null && !fileObjectName.isEmpty()) {
+                    updateWrapper1.set("file_url", minioOSSUtil.getFileUrl(fileObjectName));
+                    needUpdate = true;
+                }
+            } catch (Exception e) {
+                log.warn("[cronUpdateFileUrl] 原图重签失败 fileId={}: {}", fileId, e.getMessage());
+            }
+            try {
+                if (thumbnailObjectName != null && !thumbnailObjectName.isEmpty()) {
+                    updateWrapper1.set("thumbnail_url", minioOSSUtil.getFileUrl(thumbnailObjectName));
+                    needUpdate = true;
+                }
+            } catch (Exception e) {
+                log.warn("[cronUpdateFileUrl] 缩略图重签失败 fileId={}: {}", fileId, e.getMessage());
+            }
+            if (needUpdate) {
+                fileMapper.update(updateWrapper1);
+            }
         }
         //更新人物照片链接
-        Wrapper<Face> queryWrapper2 = new QueryWrapper<>();
-        List<Face> faces = faceMapper.selectList(queryWrapper2);
-
+        List<Face> faces = faceMapper.selectList(new QueryWrapper<>());
         for (Face face : faces) {
             if (face.getPersonCoverUrl() == null) {
                 continue;
             }
-            Long faceId = face.getFaceId();
             String personObjectName = face.getPersonObjectName();
-            UpdateWrapper<Face> updateWrapper2 = new UpdateWrapper<>();
-            String fileUrl = minioOSSUtil.getFileUrl(personObjectName);
-            updateWrapper2.eq("face_id", faceId);
-            updateWrapper2.set("person_cover_url", fileUrl);
-            faceMapper.update(updateWrapper2);
+            if (personObjectName == null || personObjectName.isEmpty()) {
+                continue;
+            }
+            Long faceId = face.getFaceId();
+            try {
+                UpdateWrapper<Face> updateWrapper2 = new UpdateWrapper<>();
+                updateWrapper2.eq("face_id", faceId);
+                updateWrapper2.set("person_cover_url", minioOSSUtil.getFileUrl(personObjectName));
+                faceMapper.update(updateWrapper2);
+            } catch (Exception e) {
+                log.warn("[cronUpdateFileUrl] 人物封面重签失败 faceId={}: {}", faceId, e.getMessage());
+            }
         }
         //更新用户头像链接
-        Wrapper<User> queryWrapper3 = new UpdateWrapper<>();
         BaseMapper<User> userMapper = userService.getBaseMapper();
-        List<User> users = userMapper.selectList(queryWrapper3);
+        List<User> users = userMapper.selectList(new QueryWrapper<>());
         for (User user : users) {
             if (user.getAvatarUrl() == null) {
                 continue;
             }
-            Long userId = user.getUserId();
             String avatarObjectName = user.getAvatarObjectName();
-            UpdateWrapper<User> updateWrapper3 = new UpdateWrapper<>();
-            String fileUrl = minioOSSUtil.getFileUrl(avatarObjectName);
-            updateWrapper3.eq("id", userId);
-            updateWrapper3.set("avatar_url", fileUrl);
-            userMapper.update(updateWrapper3);
+            if (avatarObjectName == null || avatarObjectName.isEmpty()) {
+                continue;
+            }
+            Long userId = user.getUserId();
+            try {
+                UpdateWrapper<User> updateWrapper3 = new UpdateWrapper<>();
+                updateWrapper3.eq("id", userId);
+                updateWrapper3.set("avatar_url", minioOSSUtil.getFileUrl(avatarObjectName));
+                userMapper.update(updateWrapper3);
+            } catch (Exception e) {
+                log.warn("[cronUpdateFileUrl] 头像重签失败 userId={}: {}", userId, e.getMessage());
+            }
         }
     }
 }

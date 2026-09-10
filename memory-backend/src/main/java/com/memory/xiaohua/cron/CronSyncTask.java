@@ -69,8 +69,8 @@ public class CronSyncTask {
 
     @EventListener(ApplicationReadyEvent.class)
     public void CronUpdateFileUrlOnStartUp(){
-        //log.info("应用启动完成，触发修改文件Url");
-        //fileService.cronUpdateFileUrl();
+        log.info("应用启动完成，触发修改文件Url");
+        fileService.cronUpdateFileUrl();
     }
     @Scheduled(cron = "0 0 0 * * ?")  // 2.5 修复：每天凌晨执行（原 "0 0 0 */6 * ?" 是每 6 天，URL 7 天有效期会断档）
     public void  CronUpdateFileUrl(){

@@ -281,6 +281,8 @@ declare namespace API {
     title: string
     params: Record<string, any>
     preview?: PendingActionPreview
+    /** 关联的执行步骤序号，确认后用于把步骤条上对应步骤置为已完成 */
+    stepId?: number
   }
 
   interface AiSession {
@@ -299,10 +301,48 @@ declare namespace API {
     originFileName?: string
   }
 
+  /** 照片下载清单项（download 事件载荷元素，打包下载时按 fileId 请求服务端） */
+  interface AiDownloadItem {
+    fileName: string
+    fileId: string
+  }
+
+  /** 表格列定义（table 事件载荷，由后端下发，前端按 type 渲染） */
+  interface AiTableColumn {
+    /** rows 元素中对应的键名 */
+    key: string
+    /** 表头文案 */
+    label: string
+    /** 渲染方式：text / image / number */
+    type: string
+  }
+
+  /** 表格结果（table 事件载荷，如相册问数明细列表） */
+  interface AiTablePayload {
+    columns: AiTableColumn[]
+    rows: Record<string, any>[]
+  }
+
+  /** 标量指标（metric 事件载荷，如「相册数量：12」） */
+  interface AiMetricPayload {
+    label: string
+    value: number | string
+  }
+
+  /** AI 执行步骤（step 事件载荷，同一 id 会先 running 再推终态） */
+  interface AgentStep {
+    id: number
+    title?: string
+    /** pending / running / done / failed / waiting_confirm */
+    status: string
+    /** 完成/失败/待确认时回填的结果摘要 */
+    detail?: string
+  }
+
   interface AiMessage {
     role: 'user' | 'assistant' | 'tool'
     content: string
-    /** text / html / pending_action / photos */
+    /** text / html / pending_action / photos / download / table / metric */
     contentType: string
     /** JSON 字符串（pending_action / photos）/ HTML 字符串（html）/ null（text） */
     extra?: string

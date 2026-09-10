@@ -4,8 +4,6 @@ import com.memory.xiaohua.ai.config.AiProperties;
 import com.memory.xiaohua.ai.sql.Text2SqlService;
 import com.memory.xiaohua.exception.BusinessException;
 import com.memory.xiaohua.exception.StatusCode;
-import dev.langchain4j.agent.tool.P;
-import dev.langchain4j.agent.tool.Tool;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -42,9 +40,7 @@ public class QueryTools {
      * @param userId   当前用户（由编排层注入）
      * @return 照片列表 JSON
      */
-    @Tool("根据自然语言查询当前用户的照片，支持按地点、时间、标签、设备等条件筛选")
-    public String searchPhotos(@P("查询需求描述") String question,
-                               @P("当前用户ID") Long userId) {
+    public String searchPhotos(String question, Long userId) {
         if (question == null || question.isBlank()) {
             throw new BusinessException(StatusCode.PARAMS_ERROR, "查询条件为空");
         }

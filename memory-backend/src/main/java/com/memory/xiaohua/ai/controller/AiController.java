@@ -9,10 +9,12 @@ import com.memory.xiaohua.exception.BusinessException;
 import com.memory.xiaohua.exception.StatusCode;
 import com.memory.xiaohua.model.dto.ai.AiChatRequest;
 import com.memory.xiaohua.model.dto.ai.AiCreateSessionRequest;
+import com.memory.xiaohua.model.dto.ai.AiDownloadZipRequest;
 import com.memory.xiaohua.model.dto.ai.AiExecuteRequest;
 import com.memory.xiaohua.model.vo.ai.AiMessageVO;
 import com.memory.xiaohua.model.vo.ai.AiSessionVO;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -77,6 +79,16 @@ public class AiController {
         Long userId = currentUserId();
         aiService.deleteSession(userId, sessionId);
         return ResultUtil.success("删除成功");
+    }
+
+    @PostMapping(value = "/download/zip", produces = "application/zip")
+    @Operation(summary = "照片打包下载", description = "按 fileId 列表归属校验后打包 ZIP 流式返回")
+    public void downloadZip(@RequestBody AiDownloadZipRequest request, HttpServletResponse response) {
+        if (request == null || request.getFileIds() == null || request.getFileIds().isEmpty()) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "未指定要下载的照片");
+        }
+        Long userId = currentUserId();
+        aiService.downloadPhotosZip(userId, request.getFileIds(), response);
     }
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

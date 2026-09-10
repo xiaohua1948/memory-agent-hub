@@ -66,6 +66,15 @@ public class MainAgent {
     /** 工具规格列表：每次请求必须随 ChatRequest.parameters 传给 LLM，否则模型不知道工具存在 */
     private final List<ToolSpecification> toolSpecifications = new ArrayList<>();
 
+    /**
+     * 步骤序号（原子自增，前端按 id 定位并更新步骤状态）。
+     *
+     * <p>不随每次请求重置：并发请求下重置反而更容易撞号，
+     * 而步骤 id 只在当次 SSE 流内使用，跨请求递增不影响展示。
+     */
+    private final java.util.concurrent.atomic.AtomicInteger stepSeq =
+            new java.util.concurrent.atomic.AtomicInteger(0);
+
     public MainAgent(AgentTools agentTools, AiProperties properties) {
         this.agentTools = agentTools;
         this.properties = properties;
@@ -134,12 +143,18 @@ public class MainAgent {
 
                 // 执行本轮全部工具调用，结果逐条回填（支持模型一次并行发起多个工具）
                 for (ToolExecutionRequest request : aiMessage.toolExecutionRequests()) {
-                    pushToolProgress(sink, request);
+                    int stepId = stepSeq.incrementAndGet();
+                    pushStep(sink, stepId, "running", ToolLabels.label(request.name(), request.arguments()), null);
+                    // 把步骤号注入上下文：写操作生成待确认卡片时会带上它，
+                    // 用户确认后前端才能精确地把对应步骤标记为完成
+                    AgentToolContext.current().setCurrentStepId(stepId);
                     String result;
+                    boolean failed = false;
                     try {
                         ToolExecutor executor = toolExecutors.get(request.name());
                         if (executor == null) {
                             result = "未知工具: " + request.name() + "，可用工具: " + toolExecutors.keySet();
+                            failed = true;
                         } else {
                             result = executor.execute(request, context.getSessionId());
                         }
@@ -149,9 +164,14 @@ public class MainAgent {
                         while (root.getCause() != null) {
                             root = root.getCause();
                         }
+                        failed = true;
                         log.warn("[AI][MainAgent] 工具 {} 执行失败: {}", request.name(), root.getMessage());
                         result = "工具执行失败：" + root.getMessage() + "。请修正参数后重试，或调整策略。";
                     }
+                    // 写操作只生成待确认草稿，步骤停在 waiting_confirm，等用户确认后由前端转为完成
+                    String status = failed ? "failed"
+                            : (ToolLabels.isWriteTool(request.name()) ? "waiting_confirm" : "done");
+                    pushStep(sink, stepId, status, null, ToolLabels.firstLine(result, 40));
                     messages.add(ToolExecutionResultMessage.from(request, result == null ? "" : result));
                 }
             }
@@ -242,8 +262,15 @@ public class MainAgent {
                   ⚠️ 注意：它**无法按相册筛选**，只能按照片自身属性检索；涉及「某个具体相册里的照片」时请改用 searchPhotosByAlbum。
                 - searchPhotosByAlbum：按相册查询照片（纯读）。传入相册名称或相册ID，返回该相册内的所有照片及其 fileId。
                   用于「某相册里有哪些照片」「XX 相册里的照片」类需求；只有它能按相册维度检索。
+                - queryAlbums：相册问数子Agent（纯读）。按相册名称、创建时间、照片数量等任意维度查询相册自身信息，
+                  也能只统计数量（如「我有多少个相册」）。用于「某天创建的相册」「照片数超过10张的相册」
+                  「名字带旅行的相册」类需求。注意与 searchPhotosByAlbum 的分工：
+                  查「相册的属性」用 queryAlbums，查「相册里的照片」用 searchPhotosByAlbum。
                 - getPhotosExif：查询照片的EXIF拍摄信息（纯读）。返回拍摄时间、地点、设备、尺寸、ISO、光圈、快门、
                   焦距、白平衡等详情。用于「这两张照片的EXIF」「用什么设备拍的」「查看拍摄参数」类需求；
+                  照片来自用户选中的照片或最近查询结果时 fileIdsJson 传[]即可自动使用。
+                - downloadPhotos：为照片生成下载卡片展示给用户（纯读）。用户点击卡片上的按钮即可把照片保存到本地。
+                  用于「下载这些照片」「保存到本地」「导出照片」类需求；
                   照片来自用户选中的照片或最近查询结果时 fileIdsJson 传[]即可自动使用。
                 - listAlbums：查询用户相册列表（纯读）。
                 - createAlbum：创建相册并可放入照片（写操作，生成确认卡片，用户确认后才真正执行）。
@@ -258,10 +285,14 @@ public class MainAgent {
                 ## 编排原则
                 1. 复杂任务拆解为多步工具调用，按逻辑顺序执行：先读后写、先查数据，再用真实数据执行依赖它的写操作。
                 2. 用户要求「查询照片并创建相册/加入相册」时：必须先调用 searchPhotos（按地点/时间/标签等属性）或
-                   searchPhotosByAlbum（按指定相册）获得真实的照片 fileId 列表，再把该列表原样传入写操作工具的
-                   photoFileIdsJson 参数；严禁编造 fileId。
+                   searchPhotosByAlbum（按指定相册），工具会返回一个照片集引用（形如 photos#1）；
+                   把该引用原样填入写操作工具的 photoFileIdsJson 参数，严禁编造 fileId 或 photos#n。
                 3. 所有写操作（createAlbum/addPicturesToAlbum/updateAlbumInfo/deleteAlbum/removePicturesFromAlbum）
                    都是「草稿 + 确认」模式：调用成功只代表生成了待确认卡片，必须在最终答复中明确提醒用户在界面上确认。
+                   【关键】写操作不会中断你的执行：若后续还有<b>不依赖相册创建结果</b>的步骤
+                   （典型如「根据这些照片生成网页」——网页只依赖照片，不依赖相册是否建好），
+                   必须在本轮继续调用相应工具完成，不要在生成卡片后就停下等确认。
+                   只有确实需要相册的真实 ID 才能继续时，才停下来等用户确认。
                 4. 相册名称、描述等参数必须忠实来自用户输入：用户指定了描述就原样传入，不要改写、不要遗漏。
                 5. 用户要求修改相册但未说明改哪项时，先用 listAlbums 或结合上下文确定目标相册；
                    updateAlbumInfo 只传用户要求修改的字段，其余传空字符串保持原值。
@@ -271,6 +302,7 @@ public class MainAgent {
                    **绝不能把 fileId 写进需求文本当作图片地址**——网页里的图片地址由工具内部按 fileId 查出。
                 8. searchPhotos 结果为空时如实告知用户，不要继续执行依赖照片结果的写操作。
                    用户问照片的 EXIF/拍摄参数（ISO、光圈、快门、设备等）时用 getPhotosExif，不要用 searchPhotos 反复试错。
+                   用户要下载/保存/导出照片时用 downloadPhotos，界面会展示下载按钮供用户点击。
                 9. 【避免重复查询】若本轮已调用过 searchPhotos 或 searchPhotosByAlbum，或系统提示中已给出「用户选中的照片」
                    /「最近查询到的照片」ID 列表，用户再说「用这些照片/把它们/生成网页/加入相册」时，
                    直接把这些 ID 传入工具（或传 [] 让系统自动使用），**不要调用 searchPhotos / searchPhotosByAlbum 去"找"它们**。
@@ -281,6 +313,13 @@ public class MainAgent {
                     用自然语言描述照片（如"这 16 张南京照片"）。fileId 只在工具参数内部使用。
                 11. 全程使用简体中文。最终答复简洁总结：做了什么、结果如何、下一步（如需用户确认）。
                 12. 与照片/相册无关的日常闲聊直接回答，不调用工具。
+
+                ## 照片引用规则（重要）
+                - 查询类工具（searchPhotos / searchPhotosByAlbum）返回的是照片集引用，形如 photos#1、photos#2，
+                  不再是 fileId 列表。
+                - 后续工具要用这批照片时，把引用字符串原样填入 fileIdsJson / photoFileIdsJson（如 "photos#1"）。
+                - 传 [] 表示「就用最近一次查出的那批」，系统会自动指向它；不要为了拿 ID 而重复查询。
+                - 严禁自己编造 photos#n 或 fileId。引用不存在时工具会报错并列出当前可用的引用，按提示改正后重试。
                 """;
     }
 
@@ -323,13 +362,27 @@ public class MainAgent {
         }
     }
 
-    /** 推送工具调用进度事件（前端可据此展示「正在执行：xxx」） */
-    private void pushToolProgress(Consumer<Map<String, Object>> sink, ToolExecutionRequest request) {
+    /**
+     * 推送步骤状态事件（前端据此渲染执行步骤条）。
+     *
+     * @param id     步骤序号（同一 id 的多次推送表示状态迁移）
+     * @param status running / done / failed / waiting_confirm
+     * @param title  步骤标题（仅在首次推送时给，后续更新无需重复）
+     * @param detail 结果摘要（完成时回填，如「找到 16 张照片」）
+     */
+    private void pushStep(Consumer<Map<String, Object>> sink, int id, String status,
+                          String title, String detail) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("name", request.name());
-        data.put("arguments", request.arguments());
+        data.put("id", id);
+        data.put("status", status);
+        if (title != null && !title.isBlank()) {
+            data.put("title", title);
+        }
+        if (detail != null && !detail.isBlank()) {
+            data.put("detail", detail);
+        }
         Map<String, Object> event = new LinkedHashMap<>();
-        event.put("type", "tool");
+        event.put("type", "step");
         event.put("data", data);
         sink.accept(event);
     }

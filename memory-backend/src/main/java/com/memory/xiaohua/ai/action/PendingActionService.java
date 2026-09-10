@@ -3,6 +3,7 @@ package com.memory.xiaohua.ai.action;
 import com.memory.xiaohua.ai.config.AiProperties;
 import com.memory.xiaohua.exception.BusinessException;
 import com.memory.xiaohua.exception.StatusCode;
+import com.memory.xiaohua.ai.agent.AgentToolContext;
 import com.memory.xiaohua.mapper.AiPendingActionMapper;
 import com.memory.xiaohua.model.entity.AiPendingAction;
 import com.memory.xiaohua.model.vo.ai.PendingActionVO;
@@ -93,6 +94,16 @@ public class PendingActionService {
         String actionId = UUID.randomUUID().toString().replace("-", "");
         int ttl = properties.getPendingActionTtlSeconds();
 
+        // 回填步骤号：让确认卡片能关联到前端步骤条上的那一步。
+        // 统一在此处写入，避免每个写工具各写一遍；非工具链路调用时无上下文，跳过即可。
+        if (vo != null) {
+            AgentToolContext ctx = AgentToolContext.currentOrNull();
+            if (ctx != null) {
+                vo.setStepId(ctx.getCurrentStepId());
+            }
+            vo.setActionId(actionId);
+        }
+
         // 1. Redis 高速存储（含卡片展示信息）
         String key = KEY_PREFIX + actionId;
         redisUtil.hset(key, "userId", String.valueOf(userId));
@@ -115,6 +126,19 @@ public class PendingActionService {
 
         log.info("[AI] 创建待确认操作 actionId={}, type={}, userId={}", actionId, actionType, userId);
         return actionId;
+    }
+
+    /**
+     * 读取待确认操作所属会话（供确认后回写对话使用）。
+     *
+     * @return sessionId；已过期或不存在时返回 null
+     */
+    public String getSessionId(String actionId) {
+        if (actionId == null || actionId.isBlank()) {
+            return null;
+        }
+        Object v = redisUtil.hget(KEY_PREFIX + actionId, "sessionId");
+        return v == null ? null : String.valueOf(v);
     }
 
     /**

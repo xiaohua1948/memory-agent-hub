@@ -13,29 +13,37 @@ import com.memory.xiaohua.exception.BusinessException;
 import com.memory.xiaohua.exception.StatusCode;
 import com.memory.xiaohua.mapper.AiMessageMapper;
 import com.memory.xiaohua.mapper.AiSessionMapper;
+import com.memory.xiaohua.mapper.FileMapper;
 import com.memory.xiaohua.model.dto.ai.AiChatRequest;
 import com.memory.xiaohua.model.dto.ai.AiCreateSessionRequest;
 import com.memory.xiaohua.model.entity.AiMessage;
 import com.memory.xiaohua.model.entity.AiSession;
+import com.memory.xiaohua.model.entity.FileEntity;
 import com.memory.xiaohua.model.vo.ai.AiMessageVO;
 import com.memory.xiaohua.model.vo.ai.AiSessionVO;
+import com.memory.xiaohua.utils.file.MinioOSSUtil;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.zip.ZipOutputStream;
 
 /**
  * AI 智能助手服务实现
@@ -51,6 +59,7 @@ public class AiServiceImpl implements AiService {
 
     private final AiSessionMapper sessionMapper;
     private final AiMessageMapper messageMapper;
+    private final FileMapper fileMapper;
     private final MainAgent mainAgent;
     private final PendingActionService pendingActionService;
     private final AlbumTools albumTools;
@@ -61,6 +70,13 @@ public class AiServiceImpl implements AiService {
     /** createSession 写入的默认标题（命中则触发标题生成） */
     private static final String DEFAULT_SESSION_TITLE = "新对话";
 
+    /** 单次打包下载的照片数量上限（防滥用） */
+    private static final int MAX_DOWNLOAD_FILES = 200;
+
+    /** 对象存储工具（打包下载用；未装配时报错提示） */
+    @Autowired(required = false)
+    private MinioOSSUtil minioOSSUtil;
+
     /** 轻量 router 模型：用于会话标题生成（未配置时兜底截取前12字） */
     @Autowired(required = false)
     @Qualifier("routerModel")
@@ -68,6 +84,7 @@ public class AiServiceImpl implements AiService {
 
     public AiServiceImpl(AiSessionMapper sessionMapper,
                          AiMessageMapper messageMapper,
+                         FileMapper fileMapper,
                          MainAgent mainAgent,
                          PendingActionService pendingActionService,
                          AlbumTools albumTools,
@@ -76,6 +93,7 @@ public class AiServiceImpl implements AiService {
                          ObjectMapper objectMapper) {
         this.sessionMapper = sessionMapper;
         this.messageMapper = messageMapper;
+        this.fileMapper = fileMapper;
         this.mainAgent = mainAgent;
         this.pendingActionService = pendingActionService;
         this.albumTools = albumTools;
@@ -185,8 +203,14 @@ public class AiServiceImpl implements AiService {
         });
 
         // 6. 持久化助手产出：content 纯文本 + extra 结构化（HTML/卡片不进记忆）
+        List<Map<String, Object>> stepEvents = new ArrayList<>();
         for (Map<String, Object> event : produced) {
             String type = String.valueOf(event.getOrDefault("type", "text"));
+            if ("step".equals(type)) {
+                // 步骤事件汇总为一条「执行步骤」消息，不逐条落库
+                stepEvents.add(event);
+                continue;
+            }
             if ("tool".equals(type)) {
                 // 工具调用进度事件：仅前端展示，不落库、不进记忆
                 continue;
@@ -214,6 +238,26 @@ public class AiServiceImpl implements AiService {
                             : "查询结果";
                     extra = toJsonQuietly(data);
                 }
+                case "download" -> {
+                    contentType = "download";
+                    Object data = event.get("data");
+                    content = (data instanceof List<?> l)
+                            ? ("下载 " + l.size() + " 张照片")
+                            : "下载清单";
+                    extra = toJsonQuietly(data);
+                }
+                case "table" -> {
+                    contentType = "table";
+                    Object data = event.get("data");
+                    content = describeTablePayload(data);
+                    extra = toJsonQuietly(data);
+                }
+                case "metric" -> {
+                    contentType = "metric";
+                    Object data = event.get("data");
+                    content = describeMetricPayload(data);
+                    extra = toJsonQuietly(data);
+                }
                 default -> {
                     contentType = "text";
                     content = String.valueOf(event.getOrDefault("data", ""));
@@ -222,6 +266,12 @@ public class AiServiceImpl implements AiService {
             saveMessage(sessionId, userId, "assistant", contentType, content, extra);
             // 记忆只追加纯文本，避免 HTML/卡片污染上下文与 token 浪费
             memory.add(dev.langchain4j.data.message.AiMessage.from(content));
+        }
+
+        // 6.1 执行步骤汇总落一条：供历史回看与前端渲染，不进对话记忆（过程信息会污染上下文）
+        if (!stepEvents.isEmpty()) {
+            saveMessage(sessionId, userId, "assistant", "steps",
+                    "已完成 " + countFinishedSteps(stepEvents) + " 个步骤", toJsonQuietly(stepEvents));
         }
 
         // 7. 刷新会话更新时间（不覆盖标题）
@@ -318,10 +368,36 @@ public class AiServiceImpl implements AiService {
                 }
             }
             result.put("actionId", actionId);
+            // 回写对话：此前执行结果只返回给前端，对话历史永远停在「请在界面确认」，
+            // 导致用户下一轮说「把刚才那个相册改个名」时，模型无从知道相册是否真的建成了。
+            writeBackConfirmation(actionId, userId, result);
             return result;
         } catch (Exception e) {
             log.error("[AI] 执行确认操作失败 actionId={}", actionId, e);
             throw new BusinessException(StatusCode.OPERATION_ERROR, "执行失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 把写操作的真实执行结果写回会话（DB 消息 + 运行时记忆）。
+     *
+     * <p>这是 HITL 闭环的最后一环：确认发生在独立 HTTP 请求里，
+     * 若不回写，主 Agent 在此后的每一轮都看不到这次操作的结果。
+     */
+    private void writeBackConfirmation(String actionId, Long userId, Map<String, Object> result) {
+        try {
+            String sessionId = pendingActionService.getSessionId(actionId);
+            if (sessionId == null) {
+                return;
+            }
+            String text = String.valueOf(result.getOrDefault("message", "操作已完成"));
+            saveMessage(sessionId, userId, "assistant", "text", text, null);
+            memoryFactory.buildMemory(sessionId)
+                    .add(dev.langchain4j.data.message.AiMessage.from(text));
+            log.info("[AI] 写操作结果已回写会话 sessionId={}, actionId={}", sessionId, actionId);
+        } catch (Exception e) {
+            // 回写失败不能影响已成功执行的写操作，仅记录日志
+            log.warn("[AI] 写操作结果回写失败 actionId={}: {}", actionId, e.getMessage());
         }
     }
 
@@ -449,6 +525,62 @@ public class AiServiceImpl implements AiService {
     }
 
     /**
+     * 统计终态步骤数（同一 id 会先 running 再 done/failed，按 id 去重）。
+     *
+     * <p>waiting_confirm 视为终态：它代表本轮编排已结束，只是等待用户确认。
+     */
+    @SuppressWarnings("unchecked")
+    private int countFinishedSteps(List<Map<String, Object>> stepEvents) {
+        java.util.Set<Object> finished = new java.util.HashSet<>();
+        for (Map<String, Object> event : stepEvents) {
+            Object data = event.get("data");
+            if (data instanceof Map<?, ?> d) {
+                String status = String.valueOf(d.get("status"));
+                if (!"running".equals(status)) {
+                    finished.add(d.get("id"));
+                }
+            }
+        }
+        return finished.size();
+    }
+
+    /**
+     * 表格事件 → 进记忆的纯文本摘要。
+     *
+     * <p>表格原文（含封面 URL）不进对话记忆：一是浪费 token，二是历史回灌时
+     * 过期的图片地址会污染上下文。记忆里只需「查到几条」这类结论。
+     */
+    @SuppressWarnings("unchecked")
+    private String describeTablePayload(Object data) {
+        int rows = 0;
+        String title = "查询结果";
+        if (data instanceof Map<?, ?> map) {
+            Object r = map.get("rows");
+            if (r instanceof List<?> list) {
+                rows = list.size();
+            }
+            Object t = map.get("title");
+            if (t != null && !String.valueOf(t).isBlank()) {
+                title = String.valueOf(t);
+            }
+        }
+        return rows > 0 ? (title + "：" + rows + " 条记录") : (title + "：无匹配记录");
+    }
+
+    /** 指标事件 → 进记忆的纯文本摘要（如「相册数量：12」） */
+    @SuppressWarnings("unchecked")
+    private String describeMetricPayload(Object data) {
+        if (data instanceof Map<?, ?> map) {
+            Object label = map.get("label");
+            Object value = map.get("value");
+            if (label != null && value != null) {
+                return label + "：" + value;
+            }
+        }
+        return "查询指标";
+    }
+
+    /**
      * 构造 SSE 事件：非字符串 data 统一序列化为 JSON 字符串。
      *
      * <p>动机：SseEmitter 对非 String 的 data 依赖 Spring 运行时选择 converter 序列化，
@@ -463,6 +595,56 @@ public class AiServiceImpl implements AiService {
         Map<String, Object> sse = new LinkedHashMap<>(event);
         sse.put("data", toJsonQuietly(data));
         return sse;
+    }
+
+    /**
+     * 照片打包下载：归属校验后从对象存储拉流打包 ZIP，流式写入响应（不落盘）。
+     *
+     * <p>复用 {@link MinioOSSUtil#downloadFileToZip}（含 zip 内重名自动编号），
+     * 响应头/流式刷新与相册打包下载（FileServiceImpl）保持一致。
+     */
+    @Override
+    public void downloadPhotosZip(Long userId, List<String> fileIds, HttpServletResponse response) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "未指定要下载的照片");
+        }
+        if (fileIds.size() > MAX_DOWNLOAD_FILES) {
+            throw new BusinessException(StatusCode.PARAMS_ERROR, "单次最多下载 " + MAX_DOWNLOAD_FILES + " 张照片");
+        }
+        if (minioOSSUtil == null) {
+            throw new BusinessException(StatusCode.OPERATION_ERROR, "对象存储未配置，无法打包下载");
+        }
+        // selectFileByIds 按当前用户过滤，天然防越权；查不到即全部 fileId 非法
+        List<FileEntity> files = fileMapper.selectFileByIds(fileIds, userId);
+        if (files == null || files.isEmpty()) {
+            throw new BusinessException(StatusCode.NOT_FOUND_ERROR, "没有可下载的照片");
+        }
+        try {
+            response.setContentType("application/zip");
+            response.setCharacterEncoding("UTF-8");
+            response.setHeader("Content-Transfer-Encoding", "binary");
+            response.setHeader("Cache-Control", "no-store");
+            response.setHeader("Pragma", "no-cache");
+            response.setDateHeader("Expires", 0);
+            String encodedName = URLEncoder.encode("照片下载.zip", StandardCharsets.UTF_8).replace("+", "%20");
+            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodedName);
+
+            try (ZipOutputStream zos = new ZipOutputStream(response.getOutputStream())) {
+                Map<String, Integer> nameCounter = new HashMap<>();
+                for (FileEntity fileEntity : files) {
+                    minioOSSUtil.downloadFileToZip(zos, fileEntity, nameCounter);
+                    zos.flush();
+                    response.flushBuffer();
+                }
+            }
+            log.info("[AI] 照片打包下载完成 userId={} count={}", userId, files.size());
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            // 客户端中途取消（连接断开）也会走到这里，记录告警即可
+            log.warn("[AI] 照片打包下载失败 userId={}", userId, e);
+            throw new BusinessException(StatusCode.OPERATION_ERROR, "打包下载失败，请稍后重试");
+        }
     }
 
     /**

@@ -17,6 +17,14 @@ public class PendingActionVO implements Serializable {
     /** 操作ID */
     private String actionId;
 
+    /**
+     * 所属执行步骤序号（关联前端步骤条）。
+     *
+     * <p>用户确认后，前端据此把对应步骤从「待确认」置为「已完成」——
+     * 一轮里若有多个写操作，也能精确标记而不是全部置灰。
+     */
+    private Integer stepId;
+
     /** 操作类型：CREATE_ALBUM / ADD_PICTURES ... */
     private String actionType;
 

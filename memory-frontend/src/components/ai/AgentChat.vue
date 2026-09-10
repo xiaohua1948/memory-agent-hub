@@ -104,6 +104,9 @@
 
             <!-- AI 消息 -->
             <template v-else>
+              <!-- 执行步骤条（位于本轮回复内容上方） -->
+              <AgentSteps v-if="msg.steps?.length" :steps="msg.steps!" />
+
               <!-- 文本 -->
               <div v-if="msg.content" class="bubble-wrap">
                 <div class="bubble ai-bubble">{{ msg.content }}</div>
@@ -125,6 +128,56 @@
                   :title="p.originFileName"
                   @click="previewPhotos(msg.photos || [], i)"
                 />
+              </div>
+
+              <!-- 下载卡片 -->
+              <div v-if="msg.downloads?.length" class="download-card">
+                <div class="download-info">
+                  <i-ep-download class="download-icon" />
+                  <div class="download-text">
+                    <span class="download-title">{{ msg.downloads.length }} 张照片可下载</span>
+                    <span class="download-sub">点击按钮下载 ZIP 压缩包</span>
+                  </div>
+                </div>
+                <el-button
+                  type="primary"
+                  size="small"
+                  :loading="msg.downloading"
+                  @click="downloadFiles(msg)"
+                >
+                  {{ msg.downloading ? '打包中…' : '打包下载' }}
+                </el-button>
+              </div>
+
+              <!-- 问数指标（标量结果，如相册总数） -->
+              <div v-if="msg.metric" class="metric-card">
+                <span class="metric-value">{{ msg.metric.value }}</span>
+                <span class="metric-label">{{ msg.metric.label }}</span>
+              </div>
+
+              <!-- 问数表格（明细结果，如相册列表） -->
+              <div v-if="msg.table?.rows?.length" class="result-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th v-for="c in msg.table!.columns" :key="c.key">{{ c.label }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(row, ri) in msg.table!.rows" :key="ri">
+                      <td v-for="c in msg.table!.columns" :key="c.key">
+                        <img
+                          v-if="c.type === 'image' && row[c.key]"
+                          :src="row[c.key]"
+                          class="table-thumb"
+                          alt=""
+                          @click="previewUrls([row[c.key]], 0)"
+                        />
+                        <span v-else>{{ row[c.key] ?? '-' }}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
 
               <!-- 确认卡片 -->
@@ -325,7 +378,9 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import $bus from '@/utils/bus';
+import requestPublicConfig from '@/api/config';
 import SelectPicture from '@/components/select_picture/SelectPicture.vue';
+import AgentSteps from '@/components/ai/AgentSteps.vue';
 import {
   agentExecute,
   createSession,
@@ -357,6 +412,14 @@ interface ChatMsg {
   thumbnails?: string[];
   thumbUrls?: string[];
   photos?: API.AiPhotoResult[];
+  downloads?: API.AiDownloadItem[];
+  downloading?: boolean;
+  /** 问数指标（metric 事件，如「相册数量：12」） */
+  metric?: API.AiMetricPayload;
+  /** 问数表格（table 事件，如相册明细列表） */
+  table?: API.AiTablePayload;
+  /** 执行步骤（step 事件累积，一轮对话一组，位于回复内容上方） */
+  steps?: API.AgentStep[];
   pendingAction?: API.PendingAction;
   html?: string;
   actionStatus?: 'pending' | 'executing' | 'done' | 'error';
@@ -591,6 +654,61 @@ function genMsgId(): string {
   return `local-${Date.now()}-${msgSeq}`;
 }
 
+/**
+ * 当前轮次的步骤消息引用。
+ *
+ * <p>step 事件全部累积到这一条消息上，使其位于本轮回复内容上方；
+ * 每轮发送前重置，避免跨轮串到同一条。
+ */
+let stepsMsg: ChatMsg | null = null;
+
+function ensureStepsMsg(): ChatMsg {
+  if (!stepsMsg) {
+    stepsMsg = { id: genMsgId(), role: 'assistant', steps: [] };
+    messages.value.push(stepsMsg);
+  }
+  return stepsMsg;
+}
+
+/** 解析 step 事件（data 为 {id, status, title?, detail?} JSON 字符串） */
+function parseStep(raw?: string): API.AgentStep | undefined {
+  if (!raw) return undefined;
+  try {
+    const o = JSON.parse(raw);
+    if (!o || o.id === undefined || !o.status) return undefined;
+    return { id: o.id, title: o.title, status: o.status, detail: o.detail };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 流结束（done / error）时收敛仍在 running 的步骤。
+ * SSE 异常中断时不会有终态事件，不处理会导致步骤条永远转圈。
+ */
+function finishRunningSteps(asFailed: boolean): void {
+  if (!stepsMsg?.steps) return;
+  for (const s of stepsMsg.steps) {
+    if (s.status === 'running') {
+      s.status = asFailed ? 'failed' : 'done';
+      if (asFailed) s.detail = '已中断';
+    }
+  }
+}
+
+/** 把某步骤置为已完成（用户确认写操作后调用），步骤可能挂在另一条消息上 */
+function markStepDone(stepId?: number, detail?: string): void {
+  if (stepId == null) return;
+  for (const m of messages.value) {
+    const hit = m.steps?.find((s) => s.id === stepId);
+    if (hit) {
+      hit.status = 'done';
+      hit.detail = detail || hit.detail || '已确认执行';
+      return;
+    }
+  }
+}
+
 const canSend = computed(() => draft.value.trim().length > 0 && !sending.value);
 
 function togglePanel() {
@@ -664,6 +782,7 @@ function parsePendingAction(raw?: string): API.PendingAction | undefined {
       title: o.title,
       params: { description: o.description },
       preview: o.preview || {},
+      stepId: o.stepId,
     };
   } catch (e) {
     console.warn('[AgentChat] 确认卡片数据解析失败:', raw, e);
@@ -704,6 +823,22 @@ function toChatMsg(m: API.AiMessage): ChatMsg {
     case 'photos':
       base.content = m.content;
       base.photos = parsePhotos(m.extra);
+      break;
+    case 'download':
+      base.content = m.content;
+      base.downloads = parseDownloads(m.extra);
+      break;
+    case 'metric':
+      base.content = m.content;
+      base.metric = parseMetric(m.extra);
+      break;
+    case 'table':
+      base.content = m.content;
+      base.table = parseTablePayload(m.extra);
+      break;
+    case 'steps':
+      base.content = m.content;
+      base.steps = parseSteps(m.extra);
       break;
     case 'html':
       base.content = '已生成网页';
@@ -822,6 +957,8 @@ async function send() {
   });
   draft.value = '';
   selectedPictures.value = [];
+  // 新的一轮：重置步骤消息引用，避免本轮步骤串到上一轮那一条上
+  stepsMsg = null;
   sending.value = true;
   scrollToBottom();
 
@@ -852,6 +989,82 @@ function parsePhotos(raw?: string): API.AiPhotoResult[] | undefined {
   try {
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? (arr as API.AiPhotoResult[]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// 后端 download 事件 data 是 {fileName, fileId}[] JSON 字符串
+function parseDownloads(raw?: string): API.AiDownloadItem[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return undefined;
+    return (arr as API.AiDownloadItem[]).filter(
+      (it) => it && typeof it.fileId === 'string' && it.fileId,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+// 后端 metric 事件 data 是 {label, value} JSON 字符串
+function parseMetric(raw?: string): API.AiMetricPayload | undefined {
+  if (!raw) return undefined;
+  try {
+    const o = JSON.parse(raw);
+    if (!o || typeof o !== 'object' || o.value === undefined) return undefined;
+    return { label: o.label ?? '查询结果', value: o.value };
+  } catch {
+    return undefined;
+  }
+}
+
+// 后端 table 事件 data 是 {columns:[{key,label,type}], rows:[...]} JSON 字符串
+function parseTablePayload(raw?: string): API.AiTablePayload | undefined {
+  if (!raw) return undefined;
+  try {
+    const o = JSON.parse(raw);
+    if (!o || typeof o !== 'object') return undefined;
+    // 列定义缺失时按首行键名兜底，保证表格仍能渲染
+    const columns: API.AiTableColumn[] =
+      Array.isArray(o.columns) && o.columns.length
+        ? o.columns
+        : Object.keys(o.rows?.[0] ?? {}).map((k) => ({ key: k, label: k, type: 'text' }));
+    const rows = Array.isArray(o.rows) ? (o.rows as Record<string, any>[]) : [];
+    return { columns, rows };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 历史步骤：extra 存的是 step 事件数组 [{type:'step', data:{...}}]。
+ * 同一 id 的 running 与终态需合并为一条，否则历史里会出现重复步骤。
+ */
+function parseSteps(raw?: string): API.AgentStep[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return undefined;
+    const steps: API.AgentStep[] = [];
+    for (const e of arr) {
+      const d = e?.data;
+      if (!d || typeof d !== 'object' || d.id === undefined) continue;
+      const item: API.AgentStep = {
+        id: d.id,
+        title: d.title,
+        status: d.status,
+        detail: d.detail,
+      };
+      const i = steps.findIndex((s) => s.id === d.id);
+      if (i >= 0) {
+        steps[i] = { ...steps[i], ...item };
+      } else {
+        steps.push(item);
+      }
+    }
+    return steps.length ? steps : undefined;
   } catch {
     return undefined;
   }
@@ -901,6 +1114,47 @@ function handleChatEvent(ev: AiChatEvent) {
       }
       break;
     }
+    case 'download': {
+      const downloads = parseDownloads(ev.data);
+      if (downloads && downloads.length) {
+        messages.value.push({
+          id: genMsgId(),
+          role: 'assistant',
+          downloads,
+        });
+      }
+      break;
+    }
+    case 'metric': {
+      // 问数标量结果：data 为 {label, value} JSON 字符串
+      const metric = parseMetric(ev.data);
+      if (metric) {
+        messages.value.push({ id: genMsgId(), role: 'assistant', metric });
+      }
+      break;
+    }
+    case 'table': {
+      // 问数明细表格：data 为 {columns, rows} JSON 字符串
+      const table = parseTablePayload(ev.data);
+      if (table && table.rows?.length) {
+        messages.value.push({ id: genMsgId(), role: 'assistant', table });
+      }
+      break;
+    }
+    case 'step': {
+      // 执行步骤：同一 id 会先推 running 再推终态，按 id 合并更新
+      const step = parseStep(ev.data);
+      if (step) {
+        const list = ensureStepsMsg().steps!;
+        const idx = list.findIndex((s) => s.id === step.id);
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], ...step };
+        } else {
+          list.push(step);
+        }
+      }
+      break;
+    }
     case 'tool': {
       // 主 Agent 工具调用进度：data 为 {name, arguments} JSON 字符串
       try {
@@ -929,10 +1183,14 @@ function handleChatEvent(ev: AiChatEvent) {
       break;
     }
     case 'error': {
+      // 流异常中断：收敛仍在 running 的步骤，避免前端永远转圈
+      finishRunningSteps(true);
       pushError(ev.data || '请求失败');
       break;
     }
     case 'done':
+      finishRunningSteps(false);
+      break;
     default:
       break;
   }
@@ -958,6 +1216,8 @@ async function confirmAction(msg: ChatMsg) {
       msg.actionStatus = 'done';
       const data = res.data as { message?: string };
       msg.actionResult = data?.message || '已完成';
+      // 步骤条上对应的那一步从「待确认」转为「已完成」
+      markStepDone(msg.pendingAction.stepId, msg.actionResult);
       ElMessage.success(msg.actionResult);
     } else {
       msg.actionStatus = 'error';
@@ -973,6 +1233,46 @@ async function confirmAction(msg: ChatMsg) {
 function cancelAction(msg: ChatMsg) {
   msg.actionStatus = 'error';
   msg.actionResult = '已取消';
+}
+
+// 服务端打包下载：POST /ai/download/zip → ZIP blob → 保存；
+// 服务端从对象存储拉流打包，无跨域/签名过期问题，zip 内重名自动编号
+async function downloadFiles(msg: ChatMsg) {
+  if (!msg.downloads?.length || msg.downloading) return;
+  msg.downloading = true;
+  try {
+    const token = localStorage.getItem('token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = token;
+    const resp = await fetch(`${requestPublicConfig.baseUrl}/ai/download/zip`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ fileIds: msg.downloads.map((d) => d.fileId) }),
+    });
+    if (!resp.ok) {
+      // 后端业务异常时响应为 JSON，尝试透出错误信息
+      let msgText = `HTTP ${resp.status}`;
+      try {
+        const err = await resp.json();
+        if (err?.message) msgText = err.message;
+      } catch {
+        // 非 JSON 响应忽略
+      }
+      throw new Error(msgText);
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `照片_${msg.downloads.length}张.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+    ElMessage.success('压缩包已开始下载');
+  } catch (e: any) {
+    ElMessage.error(e?.message || '打包下载失败');
+  } finally {
+    msg.downloading = false;
+  }
 }
 
 // 下载 HTML
@@ -1171,6 +1471,124 @@ onUnmounted(() => {
 /* 删除会话按钮 hover 提示危险操作 */
 .session-delete-btn:not(.is-disabled):hover {
   color: #f56c6c;
+}
+
+/* 下载卡片 */
+.download-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0;
+  padding: 10px 14px;
+  max-width: 88%;
+  border: 1px solid #d6e4ff;
+  border-radius: 10px;
+  background: #f0f7ff;
+}
+
+.download-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.download-icon {
+  font-size: 22px;
+  color: #3d7eff;
+  flex-shrink: 0;
+}
+
+.download-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.download-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2b3a55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.download-sub {
+  font-size: 12px;
+  color: #8a94a6;
+}
+
+/* 问数指标 */
+.metric-card {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 10px 16px;
+  border: 1px solid #d6e4ff;
+  border-radius: 10px;
+  background: #f0f7ff;
+}
+
+.metric-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: #3d7eff;
+  line-height: 1;
+}
+
+.metric-label {
+  font-size: 12px;
+  color: #6b7787;
+}
+
+/* 问数表格（宽度超出面板时横向滚动，不撑破布局） */
+.result-table {
+  margin: 6px 0;
+  max-width: 100%;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  overflow: auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.result-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.result-table th {
+  padding: 8px 10px;
+  text-align: left;
+  color: #6b7787;
+  font-weight: 600;
+  background: #fafafa;
+  border-bottom: 1px solid #ebeef5;
+  white-space: nowrap;
+}
+
+.result-table td {
+  padding: 8px 10px;
+  color: #2b3a55;
+  border-bottom: 1px solid #f5f5f5;
+  vertical-align: middle;
+}
+
+.result-table tr:last-child td {
+  border-bottom: none;
+}
+
+.table-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+  cursor: pointer;
 }
 
 /* 消息列表 */

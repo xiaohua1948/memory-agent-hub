@@ -4,6 +4,7 @@ import com.memory.xiaohua.model.dto.ai.AiChatRequest;
 import com.memory.xiaohua.model.dto.ai.AiCreateSessionRequest;
 import com.memory.xiaohua.model.vo.ai.AiMessageVO;
 import com.memory.xiaohua.model.vo.ai.AiSessionVO;
+import jakarta.servlet.http.HttpServletResponse;
 
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,15 @@ public interface AiService {
 
     /** 删除会话（软删会话与消息，并清理 Redis 运行时记忆） */
     void deleteSession(Long userId, String sessionId);
+
+    /**
+     * 照片打包下载：按 fileId 列表归属校验后，从对象存储拉流打包 ZIP 写入响应。
+     *
+     * @param userId   当前用户（归属校验）
+     * @param fileIds  照片 fileId 列表
+     * @param response HTTP 响应（ZIP 流）
+     */
+    void downloadPhotosZip(Long userId, List<String> fileIds, HttpServletResponse response);
 
     /**
      * 聊天（流式回调）。sink 推送 type: text/card/html 的事件。
