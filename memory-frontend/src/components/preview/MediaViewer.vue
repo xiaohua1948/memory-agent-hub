@@ -238,7 +238,7 @@ const props = defineProps({
   },
   zIndex: {
     type: Number,
-    default: 9999,
+    default: 1800,
   },
   initialIndex: {
     type: Number,
@@ -607,8 +607,11 @@ watch(currentMedia, () => {
 })
 
 watch(index, (val) => {
-  //修改当前文件id
-  $bus.emit('setCurrentFileId', props.fileIdList[index.value]);
+  //修改当前文件id（列表未携带 id 时不上报，避免污染全局状态）
+  const currentFileId = props.fileIdList[index.value];
+  if (currentFileId) {
+    $bus.emit('setCurrentFileId', currentFileId);
+  }
 
   reset()
   emits('switch', val)
@@ -621,21 +624,23 @@ watch(
   [() => props.showDrawer, () => props.fileIdList,
 
   ],
-  // 回调函数（新旧值均为数组格式）
-  ([newShowDrawer, newFileIdList]) => {
+  // 回调函数（同步外部开关到内部状态）
+  ([newShowDrawer]) => {
     showDrawer.value = newShowDrawer;
-    // $bus.emit('setCurrentFileId', newFileIdList[index.value]);
-    if (newShowDrawer) {
-      selectMetaDataByFileId({ fileId: newFileIdList[index.value] }).then(res => {
-        fileMetaData.value = res?.data;
-      })
-    }
-
-
   },
   // 可选配置（如立即执行、深度监听）
   { immediate: true }
 )
+
+// 抽屉开启时，切换照片或开合抽屉均按当前照片重新拉取元数据
+watch([index, showDrawer, () => props.fileIdList], ([newIndex, newShowDrawer]) => {
+  const fileId = props.fileIdList[newIndex];
+  if (newShowDrawer && fileId) {
+    selectMetaDataByFileId({ fileId }).then(res => {
+      fileMetaData.value = res?.data;
+    })
+  }
+})
 
 onMounted(() => {
   deviceSupportInstall()
@@ -701,7 +706,9 @@ const formatDuration = (seconds) => {
   position: fixed;
   width: 100%;
   height: 100%;
-  z-index: 99999;
+  /* 低于 element-plus 弹窗（el-dialog/MessageBox 从 2000 起递增），
+     保证预览器内触发的所有弹窗/提示都浮在遮罩之上；高于页面元素(<=10)与上传组件(1000) */
+  z-index: 1800;
   background-color: rgba(0, 0, 0, 0.8);
 }
 

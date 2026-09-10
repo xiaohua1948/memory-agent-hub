@@ -28,7 +28,9 @@
 </template>
 
 <script setup lang="ts">
-import MediaViewer from "./MediaViewer.vue";
+import MediaViewerRaw from "./MediaViewer.vue";
+// MediaViewer 是 JS 风格组件、未声明 slots 类型；本地断言为 any 以使用其模板内实际提供的 viewer 插槽
+const MediaViewer = MediaViewerRaw as any;
 
 import { ref } from "vue";
 

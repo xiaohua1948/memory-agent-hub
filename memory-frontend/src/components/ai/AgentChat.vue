@@ -645,7 +645,9 @@ function previewUrls(urlList: string[], index: number) {
 
 function previewPhotos(photos: API.AiPhotoResult[], index: number) {
   const urlList = photos.map((p) => p.fileUrl || p.thumbnailUrl || '');
-  previewUrls(urlList, index);
+  // 携带照片 id，全局预览器据此提供下载、添加相册、照片详情（媒体数据）等能力
+  const fileIdList = photos.map((p) => p.fileId).filter((id): id is string => !!id);
+  $bus.emit('openImageViewer', { urlList, initialIndex: index, fileIdList });
 }
 
 let msgSeq = 0;
@@ -1335,7 +1337,8 @@ onUnmounted(() => {
 <style scoped>
 .agent-chat {
   position: relative;
-  z-index: 2000;
+  /* 低于照片预览器(1800)与弹窗(2000+)，保证 AI 预览照片时不被面板遮挡 */
+  z-index: 1500;
 }
 
 /* 浮动按钮 */

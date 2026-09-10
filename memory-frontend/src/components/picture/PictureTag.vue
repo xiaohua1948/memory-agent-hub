@@ -30,6 +30,8 @@ const props = withDefaults(defineProps<Props>(), {
     show: false,
     currentFileId: '',
 })
+
+const emit = defineEmits(['update:show']);
 const showTag = ref(props.show);
 const inputValue = ref('')
 const TagTypes = ['primary', 'success', 'info', 'warning', 'danger'] as const;
@@ -124,6 +126,7 @@ const handleInputConfirm = async () => {
 }
 const close = () => {
     $bus.emit("closePictureTag", false);
+    emit('update:show', false);
     // 修改完不能立马回传子组件  
 }
 </script>

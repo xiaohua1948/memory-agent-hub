@@ -36,6 +36,8 @@ const props = withDefaults(defineProps<Props>(), {
     currentFileId: '',
 })
 
+const emit = defineEmits(['update:show']);
+
 const page = ref({
     current: 1,
     size: 50,
@@ -112,6 +114,7 @@ const formatDate = (isoString: string) => {
 
 const close = () => {
     $bus.emit("closeAddAlbum", false);
+    emit('update:show', false);
     // 修改完不能立马回传子组件  
 }
 </script>
