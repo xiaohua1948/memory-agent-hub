@@ -19,6 +19,29 @@ public final class MqConstants {
     /** 文件彻底删除消费者组 */
     public static final String CONSUMER_GROUP_FILE_DELETE = "memory-file-delete-group";
 
+    // ==================== 上传后异步分析（事件解耦） ====================
+    // 上传主流程只完成"存对象 + 落库"，随后投递分析事件；
+    // 下列三类耗时分析由各自独立的消费者组按 tag 消费，互不阻塞、互不影响，
+    // 任一分析失败只影响该消费者组自身（重试/死信），不会拖慢或回滚上传。
+
+    /** 逆地理编码 tag：经纬度 → 结构化地址 */
+    public static final String TAG_FILE_GEOCODE = "file-geocode";
+
+    /** 逆地理编码消费者组 */
+    public static final String CONSUMER_GROUP_FILE_GEOCODE = "memory-file-geocode-group";
+
+    /** 图像分类识别 tag：缩略图 → AI 标签 */
+    public static final String TAG_FILE_IMAGE_TAG = "file-image-tag";
+
+    /** 图像分类识别消费者组 */
+    public static final String CONSUMER_GROUP_FILE_IMAGE_TAG = "memory-file-image-tag-group";
+
+    /** 人脸检测 tag：缩略图 → 人脸特征 / 人物聚类 */
+    public static final String TAG_FILE_FACE = "file-face";
+
+    /** 人脸检测消费者组 */
+    public static final String CONSUMER_GROUP_FILE_FACE = "memory-file-face-group";
+
     private MqConstants() {
     }
 }

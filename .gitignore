@@ -42,3 +42,4 @@ desktop.ini
 
 # ---------- Maven 本地仓库（若在项目内，一般不会） ----------
 .m2/
+memory-backend/.mvn/

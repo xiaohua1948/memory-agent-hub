@@ -171,4 +171,20 @@ public class FaceServiceImpl extends ServiceImpl<FaceMapper, Face> implements Fa
 
 
     }
+
+    @Override
+    public void processFaceByFileId(String fileId, Long userId) {
+        if (fileId == null) {
+            return;
+        }
+        QueryWrapper<Face> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("file_id", fileId);
+        queryWrapper.eq("is_processed", false);
+        Face face = faceMapper.selectOne(queryWrapper);
+        if (face == null) {
+            log.info("[Face] 无待处理人脸记录，跳过 fileId={}", fileId);
+            return;
+        }
+        processOneFace(face);
+    }
 }

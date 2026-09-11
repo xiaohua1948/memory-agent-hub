@@ -19,4 +19,10 @@ public final class RedisKeyConstants {
 
     /** 临时下载令牌 */
     public static final String TEMP_DOWNLOAD = "tempDownload:";
+
+    /** MQ 消费幂等去重表前缀（完整 key：mq:dedup:{tag}:{fileId}） */
+    public static final String MQ_DEDUP = "mq:dedup:";
+
+    /** 图像分类识别结果缓存（上传后异步预热，识别接口命中即秒回） */
+    public static final String FILE_IMAGE_TAG = "file:image-tag:";
 }

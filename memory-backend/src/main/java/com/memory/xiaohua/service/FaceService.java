@@ -15,6 +15,15 @@ public interface FaceService extends IService<Face> {
 
     void processPictureFaceInfo();
 
+    /**
+     * 按文件异步处理人脸：查出该文件未处理的人脸记录并提取特征 / 聚类。
+     * 供 MQ 消费者调用，与定时任务共用同一处理逻辑。
+     *
+     * @param fileId 文件主表 id
+     * @param userId 文件归属用户 id
+     */
+    void processFaceByFileId(String fileId, Long userId);
+
 
 
 

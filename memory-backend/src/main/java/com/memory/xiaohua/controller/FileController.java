@@ -19,6 +19,7 @@ import com.memory.xiaohua.utils.file.FileUtil;
 import com.memory.xiaohua.utils.RedisKeyConstants;
 import com.memory.xiaohua.utils.auth.RedisUtil;
 import com.memory.xiaohua.utils.file.MinioOSSUtil;
+import com.memory.xiaohua.utils.picture.ImageTagCacheUtil;
 import com.memory.xiaohua.utils.picture.ImageTagUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -53,6 +54,9 @@ public class FileController {
 
     @Resource
     private ImageTagUtil imageTagUtil;
+
+    @Resource
+    private ImageTagCacheUtil imageTagCacheUtil;
 
     @Resource
     private MinioOSSUtil minioOSSUtil;
@@ -309,9 +313,14 @@ public class FileController {
 
     @PostMapping("/getPictureTag")
     public BaseResponse<?> getPictureTag(String fileId,String thumbnailObjectName,Boolean autoAddTag) throws InterruptedException {
-        byte[] fileBytes = minioOSSUtil.getFileBytes(thumbnailObjectName);
-        String base64String = Base64.getEncoder().encodeToString(fileBytes);
-        List<TagResult> tagResult = imageTagUtil.classifyImage("base64", base64String);
+        // 优先读取上传后异步预热的识别结果；未命中（异步未完成/已过期）再实时识别并回填缓存
+        List<TagResult> tagResult = imageTagCacheUtil.get(fileId);
+        if (tagResult == null) {
+            byte[] fileBytes = minioOSSUtil.getFileBytes(thumbnailObjectName);
+            String base64String = Base64.getEncoder().encodeToString(fileBytes);
+            tagResult = imageTagUtil.classifyImage("base64", base64String);
+            imageTagCacheUtil.save(fileId, tagResult);
+        }
         // 模拟基础数据准备
 //        List<TagResult> tagResult = new ArrayList<>();
 //

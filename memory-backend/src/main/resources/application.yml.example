@@ -23,6 +23,21 @@ spring:
         port: ${REDIS_PORT:6379}
         password: ${REDIS_PASSWORD:123456}
         database: 0
+  # Apache RocketMQ 消息队列：通用异步任务基础设施（文件彻底删除、上传后分析等）
+  rocketmq:
+    # NameServer 地址（容器内用 rocketmq-namesrv:9876，本地开发用 127.0.0.1:9876）
+    name-server: ${ROCKETMQ_NAME_SERVER:127.0.0.1:9876}
+    # 生产者组（必须配置，否则启动报错）
+    producer:
+      group: ${ROCKETMQ_PRODUCER_GROUP:memory-producer-group}
+      # 发送超时（毫秒）
+      send-message-timeout: 3000
+      retry-times-when-send-failed: 3
+      retry-times-when-send-async-failed: 3
+    # 消费者侧公共配置（具体 group 在 @RocketMQMessageListener 上指定）
+    consumer:
+      # 消费失败最大重试次数（超过进入 %DLQ%+consumerGroup 死信队列）
+      max-reconsume-times: 3
   #邮箱配置
   mail:
       host: smtp.qq.com
@@ -51,8 +66,12 @@ sa-token:
     token-name: Authorization
     timeout: 2592000
     active-timeout: -1
-    is-concurrent: false
-    is-share: true
+    # 是否允许同一账号多地同时登录：true 允许多处登录，false 新登录挤掉旧登录
+    is-concurrent: true
+    # 是否共用一个 token：false 时每次登录新建 token，各端会话相互独立
+    is-share: false
+    # 同一账号最大登录数量（-1 不限制）
+    max-login-count: -1
     token-style: uuid
     is-log: true
     is-read-cookie: false

@@ -20,6 +20,8 @@ import com.memory.xiaohua.model.entity.ImageMetaData;
 import com.memory.xiaohua.model.entity.UploadTask;
 import com.memory.xiaohua.model.entity.UserFileEntity;
 import com.memory.xiaohua.model.entity.VideoMetaData;
+import com.memory.xiaohua.mq.FileAnalysisProducer;
+import com.memory.xiaohua.mq.message.FileAnalysisMessage;
 import com.memory.xiaohua.service.AlbumService;
 import com.memory.xiaohua.service.RecordService;
 import com.memory.xiaohua.service.UploadService;
@@ -37,6 +39,8 @@ import net.coobird.thumbnailator.Thumbnails;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -120,6 +124,9 @@ public class UploadServiceImpl implements UploadService {
     private RecordService recordService;
     @Resource
     private RedisUtil redisUtil;
+
+    @Resource
+    private FileAnalysisProducer fileAnalysisProducer;
 
     @Resource
     private ObjectMapper objectMapper;
@@ -397,6 +404,9 @@ public class UploadServiceImpl implements UploadService {
 
             recordService.createRecordLog("上传照片:" + task.getOriginFileName(), 1, userId, httpRequest);
 
+            // 上传主流程到此结束（存对象 + 落库），耗时分析改为异步事件
+            registerAnalysisTasks(fileEntity, userId);
+
             UploadCompleteVO vo = new UploadCompleteVO();
             vo.setFileId(fileEntity.getFileId());
             vo.setOriginFileName(fileEntity.getOriginFileName());
@@ -418,6 +428,64 @@ public class UploadServiceImpl implements UploadService {
             safeDelete(task.getFileObjectName());
             safeDelete(task.getThumbnailObjectName());
             throw e;
+        }
+    }
+
+    /**
+     * 上传落库成功后，按需投递异步分析事件（逆地理编码 / 图像分类识别 / 人脸检测）。
+     *
+     * <p>这些分析耗时且结果不阻塞用户查看，交由来独立消费者组处理，上传接口只保留
+     * "存对象 + 落库"两件必须同步完成的事。消息在事务提交后发送，避免事务回滚后
+     * 消费者读到尚不存在的文件。</p>
+     */
+    private void registerAnalysisTasks(FileEntity fileEntity, Long userId) {
+        String fileId = fileEntity.getFileId();
+        String category = fileEntity.getCategory();
+        boolean isImage = "image".equals(category);
+        boolean hasThumbnail = fileEntity.getThumbnailObjectName() != null;
+        boolean hasGeo = fileEntity.getLatitude() != null && fileEntity.getLongitude() != null;
+
+        List<Runnable> tasks = new ArrayList<>();
+        if (hasGeo) {
+            FileAnalysisMessage message = FileAnalysisMessage.builder()
+                    .fileId(fileId)
+                    .userId(userId)
+                    .category(category)
+                    .longitude(fileEntity.getLongitude())
+                    .latitude(fileEntity.getLatitude())
+                    .build();
+            tasks.add(() -> fileAnalysisProducer.sendGeocode(message));
+        }
+        if (isImage && hasThumbnail) {
+            FileAnalysisMessage message = FileAnalysisMessage.builder()
+                    .fileId(fileId)
+                    .userId(userId)
+                    .category(category)
+                    .thumbnailObjectName(fileEntity.getThumbnailObjectName())
+                    .build();
+            tasks.add(() -> fileAnalysisProducer.sendImageTag(message));
+        }
+        if (hasThumbnail) {
+            FileAnalysisMessage message = FileAnalysisMessage.builder()
+                    .fileId(fileId)
+                    .userId(userId)
+                    .category(category)
+                    .thumbnailObjectName(fileEntity.getThumbnailObjectName())
+                    .build();
+            tasks.add(() -> fileAnalysisProducer.sendFace(message));
+        }
+        if (tasks.isEmpty()) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    tasks.forEach(Runnable::run);
+                }
+            });
+        } else {
+            tasks.forEach(Runnable::run);
         }
     }
 
@@ -570,6 +638,8 @@ public class UploadServiceImpl implements UploadService {
         Face face = new Face();
         face.setFileId(fileEntity.getFileId());
         face.setUserId(userId);
+        // 显式标记为未处理，保证异步人脸消费者与定时任务都能扫到该记录
+        face.setIsProcessed(false);
         faceMapper.insert(face);
 
         UserFileEntity userFile = new UserFileEntity();
