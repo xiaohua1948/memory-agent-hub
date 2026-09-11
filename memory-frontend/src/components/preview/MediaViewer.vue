@@ -155,7 +155,8 @@
                   {{ formatDuration(fileMetaData.videoMetaData.duration) }}<span class="picture-info-blank">,</span>
 
                   <span>视频帧率：</span>
-                  {{ Math.floor(fileMetaData.videoMetaData.fps) }}<span>fps</span>
+                  {{ fileMetaData.videoMetaData.fps == null ? '未知' :
+                    Math.floor(fileMetaData.videoMetaData.fps) }}<span>fps</span>
                 </div>
               </div>
             </div>
@@ -632,15 +633,26 @@ watch(
   { immediate: true }
 )
 
-// 抽屉开启时，切换照片或开合抽屉均按当前照片重新拉取元数据
-watch([index, showDrawer, () => props.fileIdList], ([newIndex, newShowDrawer]) => {
-  const fileId = props.fileIdList[newIndex];
-  if (newShowDrawer && fileId) {
-    selectMetaDataByFileId({ fileId }).then(res => {
-      fileMetaData.value = res?.data;
-    })
-  }
-})
+// 媒体元数据请求序号：快速切换照片时丢弃过期响应，避免旧数据覆盖新数据
+let metaRequestSeq = 0;
+
+// 按当前照片重新拉取元数据
+const fetchFileMetaData = () => {
+  const fileId = props.fileIdList[index.value];
+  if (!showDrawer.value || !fileId) return;
+  const seq = ++metaRequestSeq;
+  selectMetaDataByFileId({ fileId }).then(res => {
+    // 过期响应丢弃；接口无数据时回退到空结构，避免模板读到 undefined 而显示 NaN
+    if (seq !== metaRequestSeq) return;
+    fileMetaData.value = res?.data ?? { fileInfo: {}, imageMetaData: {}, videoMetaData: {} };
+  })
+}
+
+// 抽屉开启、切换照片或列表变化时，均按当前照片重新拉取元数据。
+// 必须加 immediate：关闭预览后再次打开时组件会重建，而此时父组件的 showDrawer 往往仍为 true，
+// 内部 showDrawer 会先被上面那个 watch 的 immediate 回调同步为 true，之后不再产生"变化"，
+// 若这里不立即执行一次，就永远不会请求数据，面板只能用初始空对象渲染（表现为 NaN）。
+watch([index, showDrawer, () => props.fileIdList], fetchFileMetaData, { immediate: true })
 
 onMounted(() => {
   deviceSupportInstall()
@@ -651,6 +663,8 @@ onMounted(() => {
 
 
 const formatFileSize = (bytes) => {
+  // 无有效数值时返回占位符，避免出现 NaN
+  if (bytes == null || Number.isNaN(Number(bytes))) return '未知'
   if (bytes === 0) return '0 B'
 
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -669,7 +683,10 @@ const formatFileSize = (bytes) => {
 }
 
 const formatDate = (isoString) => {
+  if (!isoString) return '未知'
   const date = new Date(isoString);
+  // 非法时间返回占位符，避免出现 NaN
+  if (Number.isNaN(date.getTime())) return '未知'
 
   // 年月日补零
   const year = date.getFullYear();
