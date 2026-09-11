@@ -13,6 +13,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 /**
@@ -26,6 +28,13 @@ public class ImageMetadataParserUtil {
 
     // #19 修复：删除调试 main 方法（含本地硬编码路径）
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss");
+
+    /**
+     * 从 EXIF 描述中提取数值，兼容带前缀/单位以及分数形式的描述。
+     * 例如："f/1.4" -> 1.4、"F1.4" -> 1.4、"35.7 metres" -> 35.7、"14/10" -> 1.4
+     */
+    private static final Pattern NUMBER_PATTERN =
+            Pattern.compile("(-?\\d+(?:\\.\\d+)?)(?:\\s*/\\s*(-?\\d+(?:\\.\\d+)?))?");
 
     /**
      * @Description: 获取图片媒体信息
@@ -111,9 +120,13 @@ public class ImageMetadataParserUtil {
             case "Exposure Time":
                 imageMetadata.setExposureTime(parseExposureTime(description));
                 break;
-            case "F-Number":
-                imageMetadata.setFNumber(Double.parseDouble(description.replace("F", "")));
+            case "F-Number": {
+                Double fNumber = parseDoubleOrNull(description);
+                if (fNumber != null) {
+                    imageMetadata.setFNumber(fNumber);
+                }
                 break;
+            }
             case "ISO Speed Ratings":
                 imageMetadata.setIso(Integer.parseInt(description));
                 break;
@@ -144,9 +157,13 @@ public class ImageMetadataParserUtil {
             case "Exif Version":
                 imageMetadata.setVersion(description);
                 break;
-            case "Aperture Value":
-                imageMetadata.setApertureValue(Double.parseDouble(description.replace("F", "")));
+            case "Aperture Value": {
+                Double apertureValue = parseDoubleOrNull(description);
+                if (apertureValue != null) {
+                    imageMetadata.setApertureValue(apertureValue);
+                }
                 break;
+            }
             case "Shutter Speed Value":
                 imageMetadata.setShutterSpeed(parseShutterSpeed(description));
                 break;
@@ -168,6 +185,31 @@ public class ImageMetadataParserUtil {
             case "Scene Type":
                 imageMetadata.setSceneType(description);
                 break;
+        }
+    }
+
+    /**
+     * 安全解析 EXIF 描述中的数值。
+     * 兼容 "f/1.4"、"F1.4"、"1.4"、"4.2 mm"、"14/10" 等格式；
+     * 无法解析时返回 null，由调用方跳过该字段，避免单个标签异常影响整体解析。
+     */
+    private static Double parseDoubleOrNull(String description) {
+        if (description == null || description.isBlank()) {
+            return null;
+        }
+        Matcher matcher = NUMBER_PATTERN.matcher(description);
+        if (!matcher.find()) {
+            return null;
+        }
+        try {
+            double numerator = Double.parseDouble(matcher.group(1));
+            if (matcher.group(2) == null) {
+                return numerator;
+            }
+            double denominator = Double.parseDouble(matcher.group(2));
+            return denominator == 0 ? null : numerator / denominator;
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
