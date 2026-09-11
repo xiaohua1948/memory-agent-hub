@@ -666,7 +666,12 @@ let stepsMsg: ChatMsg | null = null;
 
 function ensureStepsMsg(): ChatMsg {
   if (!stepsMsg) {
-    stepsMsg = { id: genMsgId(), role: 'assistant', steps: [] };
+    // 必须包成 reactive：messages.value.push(obj) 不会把模块变量 stepsMsg 换成代理对象，
+    // 若它一直指向原始对象，后续的 list.push / list[idx] = ... / s.status = ... 全部绕过
+    // Vue 的 proxy 拦截，AgentSteps 里的 running / finished 等 computed 收不到依赖通知，
+    // 就会一直停留在「正在执行…」——即便步骤实际早已完成（现象：标题栏仍转圈，
+    // 而列表里的步骤图标已是完成态）。
+    stepsMsg = reactive<ChatMsg>({ id: genMsgId(), role: 'assistant', steps: [] });
     messages.value.push(stepsMsg);
   }
   return stepsMsg;
@@ -678,7 +683,13 @@ function parseStep(raw?: string): API.AgentStep | undefined {
   try {
     const o = JSON.parse(raw);
     if (!o || o.id === undefined || !o.status) return undefined;
-    return { id: o.id, title: o.title, status: o.status, detail: o.detail };
+    // 只带上确实存在的字段：后端终态事件刻意不重复传 title（running 时已给过），
+    // 若这里显式写成 title: undefined，合并 {...old, ...step} 时会把 running 阶段
+    // 拿到的标题抹掉，步骤名退化为兜底文案「执行子任务」。
+    const step: API.AgentStep = { id: o.id, status: o.status };
+    if (o.title !== undefined) step.title = o.title;
+    if (o.detail !== undefined) step.detail = o.detail;
+    return step;
   } catch {
     return undefined;
   }
@@ -1053,12 +1064,10 @@ function parseSteps(raw?: string): API.AgentStep[] | undefined {
     for (const e of arr) {
       const d = e?.data;
       if (!d || typeof d !== 'object' || d.id === undefined) continue;
-      const item: API.AgentStep = {
-        id: d.id,
-        title: d.title,
-        status: d.status,
-        detail: d.detail,
-      };
+      // 同 parseStep：缺失字段不能写成 undefined，否则合并时会抹掉 running 阶段的标题
+      const item: API.AgentStep = { id: d.id, status: d.status };
+      if (d.title !== undefined) item.title = d.title;
+      if (d.detail !== undefined) item.detail = d.detail;
       const i = steps.findIndex((s) => s.id === d.id);
       if (i >= 0) {
         steps[i] = { ...steps[i], ...item };

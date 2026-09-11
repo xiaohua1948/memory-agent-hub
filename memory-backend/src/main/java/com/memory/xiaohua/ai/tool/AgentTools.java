@@ -93,7 +93,9 @@ public class AgentTools {
         // 前端网格展示（photos 事件，与既有 SSE 契约一致）
         ctx.pushEvent("photos", photos);
         if (photos.isEmpty()) {
-            return "未找到符合条件的照片。";
+            // 空结果必须带诊断：否则模型会把「条件没匹配上」直接断言成「你没有这些照片」，
+            // 用户无法分辨是"真的没有"还是"检索方式不对"，直接被误导。
+            return "未找到符合条件的照片。" + buildEmptyResultDiagnostic(ctx.getUserId());
         }
         List<String> fileIds = photos.stream()
                 .map(p -> String.valueOf(p.get("fileId")))
@@ -103,6 +105,71 @@ public class AgentTools {
         return "找到 " + photos.size() + " 张照片，已记为 " + ref
                 + "。后续工具要用这批照片时，fileIdsJson 传 \"" + ref + "\"；"
                 + "若指的就是它，传 [] 也可以（系统默认使用最近一次查询的结果）。";
+    }
+
+    /**
+     * 空结果诊断：回传该用户的照片总量与地理分布，让主 Agent 能区分三种「查不到」：
+     * <ol>
+     *   <li><b>条件写法不一致</b>：目标地区出现在分布里，但本次筛选条件与库中取值不同
+     *       （如库里是「山西省」而条件写成了别的形式）→ 应改用库中实际写法重查；</li>
+     *   <li><b>确实没有</b>：目标地区不在分布里 → 才可以告知用户没有该地区的照片；</li>
+     *   <li><b>没有任何地点数据</b>：分布为空（照片普遍不含 GPS EXIF，如翻拍件、证书、截图）
+     *       → 按地点查必然为 0，要如实说明原因，而不是回答"没有该地区的照片"。</li>
+     * </ol>
+     *
+     * <p>没有这段诊断时，模型会把三种情况一律说成"没有"，这是最容易被用户察觉的误导
+     * （明明有山西的照片，只因条件写法不一致就被答成 0 张）。
+     */
+    private String buildEmptyResultDiagnostic(Long userId) {
+        try {
+            Integer total = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM user_file WHERE user_id = ? AND is_deleted = 0",
+                    Integer.class, userId);
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT l.province, l.city, COUNT(*) AS cnt "
+                            + "FROM location l "
+                            + "JOIN user_file uf ON uf.file_id = l.file_id "
+                            + "WHERE uf.user_id = ? AND uf.is_deleted = 0 "
+                            + "AND ((l.province IS NOT NULL AND l.province <> '') "
+                            + "  OR (l.city IS NOT NULL AND l.city <> '')) "
+                            + "GROUP BY l.province, l.city ORDER BY cnt DESC LIMIT 10",
+                    userId);
+
+            int totalCount = total == null ? 0 : total;
+            if (rows.isEmpty()) {
+                return "【诊断】该用户共有 " + totalCount + " 张照片，但没有任何带地理位置信息的记录"
+                        + "（照片普遍不含 GPS EXIF，如翻拍件、证书、截图）。"
+                        + "因此按地点查不出结果是正常的，请如实向用户说明这一点，"
+                        + "不要回答成「没有该地点的照片」。";
+            }
+            StringBuilder sb = new StringBuilder("【诊断】该用户共有 ").append(totalCount)
+                    .append(" 张照片，其中带地理位置信息的分布如下（省/市/数量）：");
+            for (Map<String, Object> row : rows) {
+                sb.append("\n- ")
+                  .append(blankTo(row.get("province"), "省未知"))
+                  .append(" / ")
+                  .append(blankTo(row.get("city"), "市未知"))
+                  .append(" / ")
+                  .append(row.get("cnt"));
+            }
+            sb.append("\n判断规则：若目标地区在上面的分布中出现，说明是本次筛选条件写法与库中取值不一致，"
+                    + "必须改用上面列出的实际写法重新调用 searchPhotos；"
+                    + "只有目标地区确实不在上面时，才可以说没有该地区的照片。");
+            return sb.toString();
+        } catch (Exception e) {
+            // 诊断失败不能影响主流程，顶多退回原来的「未找到」
+            log.warn("[AI][AgentTools] 空结果诊断失败（忽略）: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    /** 取字符串值，为空/空白时返回默认值 */
+    private String blankTo(Object value, String defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        String s = String.valueOf(value).trim();
+        return s.isEmpty() ? defaultValue : s;
     }
 
     /**

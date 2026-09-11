@@ -27,7 +27,12 @@ public enum StatusCode {
     STORAGE_ERROR(41010, "存储服务异常"),
     UPLOAD_MERGE_FAILED(41011, "文件合并失败"),
     UPLOAD_CONCURRENT_LIMIT(41012, "同时上传的文件数量过多"),
-    UPLOAD_PARAM_MISSING(41013, "缺少必要的上传参数");
+    UPLOAD_PARAM_MISSING(41013, "缺少必要的上传参数"),
+
+    // ===== AI 智能助手相关错误码 (420xx) =====
+    AI_RATE_LIMITED(42001, "AI 请求过于频繁"),
+    AI_INPUT_REJECTED(42002, "AI 输入未通过护轨校验"),
+    AI_BUSY(42003, "AI 服务繁忙");
 
     /**
      * 状态码

@@ -61,6 +61,81 @@ public class AiProperties {
     /** 只读 SQL 执行超时（秒） */
     private int queryTimeoutSeconds = 5;
 
+    // ==================== Agent 稳定性与护轨 ====================
+
+    /** 令牌桶限流（Redisson RRateLimiter） */
+    private RateLimit rateLimit = new RateLimit();
+
+    /** LLM 调用重试（指数退避） */
+    private Retry retry = new Retry();
+
+    /** 输入护轨 */
+    private Guard guard = new Guard();
+
+    /** 两级缓存（L1 Caffeine + L2 Redis） */
+    private Cache cache = new Cache();
+
+    /** 对话执行线程池 */
+    private ChatExecutor chatExecutor = new ChatExecutor();
+
+    /** 限流配置：按「用户 + 场景」维度的令牌桶 */
+    @Data
+    public static class RateLimit {
+        /** 是否启用（Redis 不可用时自动降级放行） */
+        private boolean enabled = true;
+        /** 令牌桶容量（一个窗口内允许的请求数） */
+        private long permits = 10;
+        /** 窗口长度（秒） */
+        private long intervalSeconds = 60;
+    }
+
+    /** LLM 调用重试配置 */
+    @Data
+    public static class Retry {
+        /** 最大尝试次数（含首次调用） */
+        private int maxAttempts = 3;
+        /** 首次退避时长（毫秒） */
+        private long initialBackoffMs = 500;
+        /** 退避倍数 */
+        private double multiplier = 2.0;
+        /** 单次退避上限（毫秒） */
+        private long maxBackoffMs = 4000;
+    }
+
+    /** 输入护轨配置 */
+    @Data
+    public static class Guard {
+        /** 单条用户输入字符上限 */
+        private int maxInputLength = 2000;
+        /** 是否拦截疑似 Prompt 注入 / 越狱输入 */
+        private boolean blockPromptInjection = true;
+    }
+
+    /** 两级缓存配置 */
+    @Data
+    public static class Cache {
+        /** 总开关：关闭时所有缓存调用直接回源，不写不读 */
+        private boolean enabled = true;
+        /** L1 Caffeine 最大条目数 */
+        private long l1MaxSize = 10000;
+        /** L1 过期时间（秒）。必须短于 L2 —— L1 无法被其他实例失效，靠短 TTL 收敛脏读 */
+        private long l1TtlSeconds = 5;
+        /** L2 Redis 过期时间（秒） */
+        private long l2TtlSeconds = 300;
+    }
+
+    /** 对话执行线程池配置（替代每个 SSE 请求裸 new Thread） */
+    @Data
+    public static class ChatExecutor {
+        private int coreSize = 8;
+        private int maxSize = 32;
+        /** 有界队列容量，满则拒绝并回 SSE error，避免无界堆积导致 OOM */
+        private int queueCapacity = 100;
+        private int keepAliveSeconds = 60;
+        /** 停机等待在途对话完成的时间（秒） */
+        private int awaitTerminationSeconds = 30;
+    }
+
     @Data
     public static class Model {
         /** 模型名 */

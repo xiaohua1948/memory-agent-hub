@@ -6,9 +6,12 @@ import com.memory.xiaohua.ai.action.PendingActionService;
 import com.memory.xiaohua.ai.agent.AgentContext;
 import com.memory.xiaohua.ai.agent.MainAgent;
 import com.memory.xiaohua.ai.config.AiProperties;
+import com.memory.xiaohua.ai.guard.InputGuardrail;
 import com.memory.xiaohua.ai.memory.AiChatMemoryFactory;
+import com.memory.xiaohua.ai.resilience.AiRateLimiter;
 import com.memory.xiaohua.ai.service.AiService;
 import com.memory.xiaohua.ai.tool.AlbumTools;
+import com.memory.xiaohua.common.cache.MultiLevelCacheManager;
 import com.memory.xiaohua.exception.BusinessException;
 import com.memory.xiaohua.exception.StatusCode;
 import com.memory.xiaohua.mapper.AiMessageMapper;
@@ -66,12 +69,23 @@ public class AiServiceImpl implements AiService {
     private final AiChatMemoryFactory memoryFactory;
     private final AiProperties properties;
     private final ObjectMapper objectMapper;
+    private final MultiLevelCacheManager cacheManager;
+    private final InputGuardrail inputGuardrail;
+    private final AiRateLimiter rateLimiter;
 
     /** createSession 写入的默认标题（命中则触发标题生成） */
     private static final String DEFAULT_SESSION_TITLE = "新对话";
 
     /** 单次打包下载的照片数量上限（防滥用） */
     private static final int MAX_DOWNLOAD_FILES = 200;
+
+    /** 会话缓存的反序列化类型（L2 为纯 JSON，需显式泛型） */
+    private static final TypeReference<AiSession> SESSION_TYPE = new TypeReference<>() {
+    };
+
+    /** 最近照片 ID 缓存的反序列化类型 */
+    private static final TypeReference<List<String>> PHOTO_IDS_TYPE = new TypeReference<>() {
+    };
 
     /** 对象存储工具（打包下载用；未装配时报错提示） */
     @Autowired(required = false)
@@ -90,7 +104,10 @@ public class AiServiceImpl implements AiService {
                          AlbumTools albumTools,
                          AiChatMemoryFactory memoryFactory,
                          AiProperties properties,
-                         ObjectMapper objectMapper) {
+                         ObjectMapper objectMapper,
+                         MultiLevelCacheManager cacheManager,
+                         InputGuardrail inputGuardrail,
+                         AiRateLimiter rateLimiter) {
         this.sessionMapper = sessionMapper;
         this.messageMapper = messageMapper;
         this.fileMapper = fileMapper;
@@ -100,6 +117,9 @@ public class AiServiceImpl implements AiService {
         this.memoryFactory = memoryFactory;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.cacheManager = cacheManager;
+        this.inputGuardrail = inputGuardrail;
+        this.rateLimiter = rateLimiter;
     }
 
     @Override
@@ -154,7 +174,11 @@ public class AiServiceImpl implements AiService {
             throw new BusinessException(StatusCode.NOT_FOUND_ERROR, "会话不存在或已删除");
         }
         messageMapper.markDeletedBySessionId(sessionId);
-        memoryFactory.clearMemory(sessionId);
+        memoryFactory.clearMemory(userId, sessionId);
+        // 写后失效：会话、记忆回灌、最近照片三个缓存都必须清掉，否则删除后仍会读到已删数据
+        cacheManager.sessionCache().evict(sessionId);
+        cacheManager.memoryCache().evict(sessionId);
+        cacheManager.recentPhotosCache().evict(sessionId);
         log.info("[AI] 会话已删除 sessionId={}, userId={}", sessionId, userId);
     }
 
@@ -168,14 +192,17 @@ public class AiServiceImpl implements AiService {
             return request.getSessionId();
         }
 
-        String sessionId = resolveSession(userId, request);
-        String userInput = request.getContent();
-        if (userInput == null || userInput.isBlank()) {
-            throw new BusinessException(StatusCode.PARAMS_ERROR, "消息不能为空");
-        }
+        // 护轨 1：令牌桶限流（按「场景 + 用户」维度）。放在最前面，
+        // 避免被限流的请求还要去创建会话 / 查库 / 起 LLM 调用
+        rateLimiter.acquireOrThrow(userId, AiRateLimiter.SCENE_CHAT);
 
-        // 1. 装配记忆（空则从 DB 回灌最近 N 条）
-        MessageWindowChatMemory memory = memoryFactory.buildMemory(sessionId);
+        // 护轨 2：输入校验（空值 / 超长 / 指令注入），返回归一化后的安全输入
+        String userInput = inputGuardrail.checkAndNormalize(userId, request.getContent());
+
+        String sessionId = resolveSession(userId, request);
+
+        // 1. 装配记忆（隔离键 userId:sessionId；为空则从 DB 回灌最近 N 条，回灌走两级缓存）
+        MessageWindowChatMemory memory = memoryFactory.buildMemory(userId, sessionId);
 
         // 2. 提取历史上下文（此时不含本轮输入，避免与 userInput 重复）
         String history = buildHistoryText(memory);
@@ -392,7 +419,7 @@ public class AiServiceImpl implements AiService {
             }
             String text = String.valueOf(result.getOrDefault("message", "操作已完成"));
             saveMessage(sessionId, userId, "assistant", "text", text, null);
-            memoryFactory.buildMemory(sessionId)
+            memoryFactory.buildMemory(userId, sessionId)
                     .add(dev.langchain4j.data.message.AiMessage.from(text));
             log.info("[AI] 写操作结果已回写会话 sessionId={}, actionId={}", sessionId, actionId);
         } catch (Exception e) {
@@ -414,11 +441,23 @@ public class AiServiceImpl implements AiService {
         return sessionId;
     }
 
+    /**
+     * 会话归属校验（走两级缓存）。
+     *
+     * <p>这是 AI 链路上最高频的查询：每次对话、拉历史消息、删除会话都会触发，
+     * 缓存后单实例内基本不再落库；跨实例脏读由 L1 短 TTL 收敛。
+     */
     private void checkSessionOwner(String sessionId, Long userId) {
-        AiSession session = sessionMapper.selectBySessionId(sessionId);
+        AiSession session = loadSessionCached(sessionId);
         if (session == null || !session.getUserId().equals(userId)) {
             throw new BusinessException(StatusCode.NOT_FOUND_ERROR, "会话不存在或无权限");
         }
+    }
+
+    /** 读取会话：L1 Caffeine → L2 Redis → DB（会话删除 / 改标题时主动失效） */
+    private AiSession loadSessionCached(String sessionId) {
+        return cacheManager.sessionCache().get(sessionId, SESSION_TYPE,
+                () -> sessionMapper.selectBySessionId(sessionId));
     }
 
     private void saveMessage(String sessionId, Long userId, String role, String contentType,
@@ -432,6 +471,11 @@ public class AiServiceImpl implements AiService {
         m.setExtra(extra);
         m.setCreateTime(LocalDateTime.now());
         messageMapper.insert(m);
+        // 写后失效：新消息落库后回灌缓存必然过期；只有 photos 消息才会影响"最近照片"缓存
+        cacheManager.memoryCache().evict(sessionId);
+        if ("photos".equals(contentType)) {
+            cacheManager.recentPhotosCache().evict(sessionId);
+        }
     }
 
     /** 记忆消息 → 历史对话文本（仅 user / assistant 纯文本） */
@@ -458,6 +502,16 @@ public class AiServiceImpl implements AiService {
      * 无需再次调用 searchPhotos 重新查询。
      */
     private List<String> loadRecentPhotoIds(AiMessageMapper mapper, String sessionId) {
+        // 走两级缓存：回源逻辑是「拉取该会话全部消息再倒序找 photos」，
+        // 随会话变长线性变慢，而每次对话都会调用一次 —— 典型的「高频 + 回源昂贵」场景。
+        // 写路径（saveMessage 写入 photos 消息时）负责失效。
+        List<String> cached = cacheManager.recentPhotosCache()
+                .get(sessionId, PHOTO_IDS_TYPE, () -> doLoadRecentPhotoIds(mapper, sessionId));
+        return cached == null ? List.of() : cached;
+    }
+
+    /** 回源实现：从会话历史中定位最近一条 photos 消息并解析其 fileId */
+    private List<String> doLoadRecentPhotoIds(AiMessageMapper mapper, String sessionId) {
         try {
             List<AiMessage> messages = mapper.selectBySessionId(sessionId);
             if (messages == null || messages.isEmpty()) {
@@ -656,7 +710,7 @@ public class AiServiceImpl implements AiService {
     private void maybeGenerateTitle(String sessionId, Long userId, String userInput,
                                     Consumer<Map<String, Object>> sink) {
         try {
-            AiSession session = sessionMapper.selectBySessionId(sessionId);
+            AiSession session = loadSessionCached(sessionId);
             if (session == null) {
                 return;
             }
@@ -667,6 +721,8 @@ public class AiServiceImpl implements AiService {
             }
             String title = generateTitle(userInput);
             sessionMapper.updateTitle(sessionId, userId, title);
+            // 标题已变更，必须失效会话缓存，否则后续读到的是旧标题
+            cacheManager.sessionCache().evict(sessionId);
             Map<String, Object> ev = new LinkedHashMap<>();
             ev.put("type", "title");
             ev.put("data", title);

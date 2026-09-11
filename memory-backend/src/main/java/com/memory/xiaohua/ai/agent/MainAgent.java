@@ -105,6 +105,8 @@ public class MainAgent {
         List<ChatMessage> messages = buildMessages(context);
         int maxIterations = Math.max(1, properties.getMaxToolIterations());
         int nudgeCount = 0;
+        // 本轮已执行的工具数：用于兜底识别"模型一个工具都没调就下结论"
+        int executedToolCount = 0;
 
         // 绑定工具执行上下文（userId 注入 + 历史照片复用 + SSE 进度推送），循环结束在 finally 中清理
         AgentToolContext.bind(context.getUserId(), context.getSessionId(),
@@ -125,7 +127,7 @@ public class MainAgent {
                 // 无工具调用：模型认为任务完成，输出最终答复
                 if (!aiMessage.hasToolExecutionRequests()) {
                     String text = aiMessage.text();
-                    // 兜底：模型输出"请稍候/正在处理"类过渡语却未发起工具调用——任务只是被
+                    // 兜底 A：模型输出"请稍候/正在处理"类过渡语却未发起工具调用——任务只是被
                     // "口头承诺"而未真正执行（常见于多步编排的中途轮次，如查询成功后
                     // 该调写工具时）。追加催促消息逼其继续调用工具（最多2次，防死循环）。
                     if (nudgeCount < 2 && isTransitionText(text)) {
@@ -137,12 +139,27 @@ public class MainAgent {
                                         + "并立即发起相应的工具调用；所有步骤完成后才给出包含真实结果的最终总结。"));
                         continue;
                     }
+                    // 兜底 B：用户明确是在要求检索，但本轮一个工具都没调用就下结论。
+                    // 典型诱因是上下文里的「最近查询到的照片」被误当成可复用的本次结果，
+                    // 表现为"库里有数据却查不到"（先查南京、再问山西即属此类）。
+                    if (executedToolCount == 0 && requiresRetrieval(context.getUserInput())) {
+                        nudgeCount++;
+                        log.info("[AI][MainAgent] 用户含检索意图但未调用任何工具，强制要求重新检索");
+                        messages.add(UserMessage.from(
+                                "用户本轮是在要求检索数据，但你还没有调用任何工具就给出了结论。"
+                                        + "系统提示中的「最近查询到的照片」只能用于指代复用"
+                                        + "（用户说「这些/它们」时），绝不能当作本次查询的结果。"
+                                        + "请立即调用相应工具执行本次查询（照片检索用 searchPhotos，"
+                                        + "相册信息用 queryAlbums），再基于真实结果回答。"));
+                        continue;
+                    }
                     pushText(sink, text);
                     return;
                 }
 
                 // 执行本轮全部工具调用，结果逐条回填（支持模型一次并行发起多个工具）
                 for (ToolExecutionRequest request : aiMessage.toolExecutionRequests()) {
+                    executedToolCount++;
                     int stepId = stepSeq.incrementAndGet();
                     pushStep(sink, stepId, "running", ToolLabels.label(request.name(), request.arguments()), null);
                     // 把步骤号注入上下文：写操作生成待确认卡片时会带上它，
@@ -214,12 +231,16 @@ public class MainAgent {
               .append("**不要**为了确认用户选中的照片而去调用 searchPhotos：ID 已在上面给出，直接传入即可。\n");
         }
 
-        // 本会话最近一次查询出的照片（多轮复用）
+        // 本会话最近一次查询出的照片：只用于「指代复用」，绝不允许替代新一轮检索。
+        // 历史教训：此处原写「无需再次调用 searchPhotos」，导致用户换条件追问
+        // （先查南京、再问山西）时模型直接拿旧结果作答，表现为"库里有数据却查不到"。
         if (context.getRecentPhotoIds() != null && !context.getRecentPhotoIds().isEmpty()) {
             sb.append("【本会话最近查询到的照片】共 ").append(context.getRecentPhotoIds().size()).append(" 张，")
               .append("fileId 列表：").append(context.getRecentPhotoIds()).append("\n")
-              .append("用户说「这些照片/把它们/用这些」时指的就是它们，直接复用即可，")
-              .append("**无需再次调用 searchPhotos**。只有用户提出全新筛选条件时才重新查询。\n");
+              .append("⚠️ 用途严格限定：**仅当**用户使用指代词（这些/它们/刚才那批）明确指向它们时才复用。\n")
+              .append("只要用户提出了任何筛选条件（地点、时间、标签、设备、文件大小等，"
+                      + "例如「山西的照片」「上个月拍的」），即使句子里含「照片」二字，"
+                      + "也**必须调用 searchPhotos 重新检索**，严禁把这批照片当作本次查询的结果回答用户。\n");
         }
         return sb.toString();
     }
@@ -245,6 +266,30 @@ public class MainAgent {
                 || t.contains("正在为您") || t.contains("正在为你") || t.contains("即将")
                 || t.contains("马上") || t.contains("让我来") || t.contains("让我查") || t.contains("让我看看")
                 || (t.contains("正在") && t.length() <= 150);
+    }
+
+    /** 检索意图：用户明确要求"查 / 找 / 搜"时，模型必须先检索再回答 */
+    private static final java.util.regex.Pattern RETRIEVAL_INTENT = java.util.regex.Pattern.compile(
+            "查询|查找|检索|搜索|搜一下|找出|找一下|帮我找|查一下|查查|有哪些|列出|看看有");
+
+    /** 指代词：用户只是在复用已有结果，此时不检索才是正确行为 */
+    private static final java.util.regex.Pattern REFERENCE_INTENT = java.util.regex.Pattern.compile(
+            "这些|那些|它们|这批|那批|此批|刚才|刚刚|上面|上述|之前查|刚查");
+
+    /**
+     * 判断用户输入是否包含「新的检索意图」。
+     *
+     * <p>用于兜底：当模型一个工具都没调用就直接下结论时，判断它是否漏掉了必须执行的检索。
+     * 含指代词（这些 / 它们）的请求不算 —— 那是复用已有结果，不调工具是正确的。
+     */
+    private boolean requiresRetrieval(String userInput) {
+        if (userInput == null || userInput.isBlank()) {
+            return false;
+        }
+        if (REFERENCE_INTENT.matcher(userInput).find()) {
+            return false;
+        }
+        return RETRIEVAL_INTENT.matcher(userInput).find();
     }
 
     private String buildSystemPrompt() {
@@ -300,19 +345,26 @@ public class MainAgent {
                    须先向用户确认或保守地传 false（仅删相册不删照片）。
                 7. 生成网页时必须把照片 fileId 列表传入 generateHtmlPage 的 fileIdsJson 参数；
                    **绝不能把 fileId 写进需求文本当作图片地址**——网页里的图片地址由工具内部按 fileId 查出。
-                8. searchPhotos 结果为空时如实告知用户，不要继续执行依赖照片结果的写操作。
+                8. searchPhotos 结果为空时会附带【诊断】信息，必须据此判断，禁止一律回答"没有"：
+                   ① 目标地区出现在分布中 → 是本次条件写法与库中取值不一致，改用库中实际写法重查一次；
+                   ② 目标地区不在分布中 → 才可以说没有该地区的照片；
+                   ③ 诊断显示"没有任何地理位置信息" → 要如实说明原因（照片不含 GPS EXIF），
+                      不要回答成"没有该地点的照片"。
+                   无论哪种，都不要继续执行依赖照片结果的写操作。
                    用户问照片的 EXIF/拍摄参数（ISO、光圈、快门、设备等）时用 getPhotosExif，不要用 searchPhotos 反复试错。
                    用户要下载/保存/导出照片时用 downloadPhotos，界面会展示下载按钮供用户点击。
-                9. 【避免重复查询】若本轮已调用过 searchPhotos 或 searchPhotosByAlbum，或系统提示中已给出「用户选中的照片」
-                   /「最近查询到的照片」ID 列表，用户再说「用这些照片/把它们/生成网页/加入相册」时，
-                   直接把这些 ID 传入工具（或传 [] 让系统自动使用），**不要调用 searchPhotos / searchPhotosByAlbum 去"找"它们**。
-                   只有用户提出全新的筛选条件（如换城市、换时间、换相册）时才重新查询。
-                8. 同一写操作不要重复发起；用户未要求写操作时绝不调用写工具。
-                9. 工具返回「工具执行失败」时，阅读失败原因，修正参数重试；连续失败两次则向用户说明情况。
-                10. 【对用户的表达】最终答复中**不要出现 fileId、ID、UUID 等内部标识**，
+                9. 【复用与重查的边界（最容易出错，务必分清）】
+                   - 复用：仅当用户用指代词（用这些照片/把它们/生成网页/加入相册）指向已有结果时，
+                     才把系统提示中给出的 ID 直接传入工具（或传 []），不要为此再去调 searchPhotos。
+                   - 重查：只要用户提出了**任何新的筛选条件**（地点、时间、标签、设备、文件大小等），
+                     例如先问「南京的照片」、接着问「山西的照片」，就**必须重新调用 searchPhotos**，
+                     绝不能把上一轮的检索结果当作本轮答案。
+                10. 同一写操作不要重复发起；用户未要求写操作时绝不调用写工具。
+                11. 工具返回「工具执行失败」时，阅读失败原因，修正参数重试；连续失败两次则向用户说明情况。
+                12. 【对用户的表达】最终答复中**不要出现 fileId、ID、UUID 等内部标识**，
                     用自然语言描述照片（如"这 16 张南京照片"）。fileId 只在工具参数内部使用。
-                11. 全程使用简体中文。最终答复简洁总结：做了什么、结果如何、下一步（如需用户确认）。
-                12. 与照片/相册无关的日常闲聊直接回答，不调用工具。
+                13. 全程使用简体中文。最终答复简洁总结：做了什么、结果如何、下一步（如需用户确认）。
+                14. 与照片/相册无关的日常闲聊直接回答，不调用工具。
 
                 ## 照片引用规则（重要）
                 - 查询类工具（searchPhotos / searchPhotosByAlbum）返回的是照片集引用，形如 photos#1、photos#2，

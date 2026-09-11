@@ -1,5 +1,6 @@
 package com.memory.xiaohua.ai.config;
 
+import com.memory.xiaohua.ai.resilience.RetryingChatModel;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,12 @@ import java.time.Duration;
  * 未启用时注入点使用 {@code @Autowired(required = false)}，Service 层统一降级为友好提示，
  * 避免 Bean 缺失导致启动失败。
  *
+ * <p><b>统一重试</b>：三个模型都通过 {@link RetryingChatModel} 包装后再暴露。
+ * 由于 LangChain4j 的各类 {@code chat(...)} 重载最终都收敛到 {@code chat(ChatRequest)}，
+ * 这一层装饰即可让全部调用点（主 Agent 编排、text2sql、query planner、网页生成、
+ * 标题生成）获得指数退避重试，无需逐处改造。SDK 自身的重试已关闭（{@code maxRetries(0)}），
+ * 避免「SDK 重试 × 外层重试」叠加导致实际调用次数与配置严重不符。
+ *
  * @author xiaohua
  */
 @Slf4j
@@ -39,14 +46,16 @@ public class LangChain4jConfig {
     @ConditionalOnProperty(prefix = "ai", name = "enabled", havingValue = "true")
     public ChatModel routerModel() {
         AiProperties.Model m = properties.getRouter();
-        return OpenAiChatModel.builder()
+        ChatModel delegate = OpenAiChatModel.builder()
                 .apiKey(resolveKey(m))
                 .baseUrl(properties.getBaseUrl())
                 .modelName(defaultIfBlank(m.getModelName(), "deepseek-chat"))
                 .temperature(m.getTemperature() == null ? 0.0 : m.getTemperature())
                 .maxTokens(m.getMaxTokens() == null ? 100 : m.getMaxTokens())
                 .timeout(Duration.ofSeconds(30))
+                .maxRetries(0)
                 .build();
+        return wrap(delegate, "router");
     }
 
     /** 主任务模型 */
@@ -54,14 +63,16 @@ public class LangChain4jConfig {
     @ConditionalOnProperty(prefix = "ai", name = "enabled", havingValue = "true")
     public ChatModel mainModel() {
         AiProperties.Model m = properties.getMain();
-        return OpenAiChatModel.builder()
+        ChatModel delegate = OpenAiChatModel.builder()
                 .apiKey(resolveKey(m))
                 .baseUrl(properties.getBaseUrl())
                 .modelName(defaultIfBlank(m.getModelName(), "deepseek-chat"))
                 .temperature(m.getTemperature() == null ? 0.1 : m.getTemperature())
                 .maxTokens(m.getMaxTokens() == null ? 2048 : m.getMaxTokens())
                 .timeout(Duration.ofSeconds(120))
+                .maxRetries(0)
                 .build();
+        return wrap(delegate, "main");
     }
 
     /**
@@ -81,14 +92,24 @@ public class LangChain4jConfig {
                 ? m.getMaxTokens() : 8192;
         Double temperature = m.getTemperature() != null
                 ? m.getTemperature() : (main.getTemperature() == null ? 0.2 : main.getTemperature());
-        return OpenAiChatModel.builder()
+        ChatModel delegate = OpenAiChatModel.builder()
                 .apiKey(resolveKey(m))
                 .baseUrl(properties.getBaseUrl())
                 .modelName(modelName)
                 .temperature(temperature)
                 .maxTokens(maxTokens)
                 .timeout(Duration.ofSeconds(180))
+                .maxRetries(0)
                 .build();
+        return wrap(delegate, "webpage");
+    }
+
+    /** 统一包装：注入按配置的指数退避重试能力 */
+    private ChatModel wrap(ChatModel delegate, String scene) {
+        AiProperties.Retry retry = properties.getRetry();
+        return new RetryingChatModel(delegate, scene,
+                retry.getMaxAttempts(), retry.getInitialBackoffMs(),
+                retry.getMultiplier(), retry.getMaxBackoffMs());
     }
 
     private String resolveKey(AiProperties.Model m) {

@@ -118,6 +118,28 @@
             <artifactId>jsqlparser</artifactId>
             <version>5.0</version>
         </dependency>
+        <!-- ============ Agent 稳定性 / 性能：Caffeine + Redisson ============ -->
+        <!-- L1 本地缓存（版本由 spring-boot-dependencies 统一管理） -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+        <!-- Redisson：令牌桶限流（RRateLimiter）。
+             只取核心包而非 redisson-spring-boot-starter —— starter 会自动配置并替换
+             RedisConnectionFactory，影响现有 RedisTemplate（GenericJackson 序列化）
+             与 Sa-Token 的 Redis 会话存储。核心包仅在需要处显式使用 RRateLimiter。 -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>3.45.0</version>
+            <exclusions>
+                <!-- 排除 spring-data 集成模块，避免其携带的 spring-data-redis 版本参与依赖调解 -->
+                <exclusion>
+                    <groupId>org.redisson</groupId>
+                    <artifactId>redisson-spring-data-*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
         <!--mybatis-plus依赖-->
         <dependency>
             <groupId>com.baomidou</groupId>
